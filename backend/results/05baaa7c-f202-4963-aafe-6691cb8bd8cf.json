@@ -1,0 +1,34 @@
+{
+  "id": "05baaa7c-f202-4963-aafe-6691cb8bd8cf",
+  "filename": "New Microsoft Word Document.pdf",
+  "page_count": 1,
+  "pages": [
+    {
+      "page": 1,
+      "text": "[{'soru_no': 1, 'soru_metni': 'Paragrafın ana düşüncesi (ana fikir) nedir? Ana düşünce kavramını açıklayınız.', 'ogrenci_cevabi': 'Ana düşünce, bir metnin okuyucuya vermek istediği temel mesajdır. Yazarın anlatmak istediği ana fikir bu düşünceyle ifade edilir. Paragrafın tamamı bu ana düşünce etrafında şekillenir.'}, {'soru_no': 2, 'soru_metni': 'Yardımcı düşünceler nelerdir? Yardımcı düşüncelerin metnin anlaşılmasına nasıl katkı sağladığını açıklayınız.', 'ogrenci_cevabi': 'Yardımcı düşünce, metindeki ana düşünceyi destekleyen, açıklayan veya örnekleyen düşüncelerdir. Ana düşüncenin daha iyi anlaşılmasını sağlar ve metnin ayrıntılarını oluşturur.'}]",
+      "raw_text": "[{'soru_no': 1, 'soru_metni': 'Paragrafın ana düşüncesi (ana fikir) nedir? Ana düşünce kavramını açıklayınız.', 'ogrenci_cevabi': 'Ana düşünce, bir metnin okuyucuya vermek istediği temel mesajdır. Yazarın anlatmak istediği ana fikir bu düşünceyle ifade edilir. Paragrafın tamamı bu ana düşünce etrafında şekillenir.'}, {'soru_no': 2, 'soru_metni': 'Yardımcı düşünceler nelerdir? Yardımcı düşüncelerin metnin anlaşılmasına nasıl katkı sağladığını açıklayınız.', 'ogrenci_cevabi': 'Yardımcı düşünce, metindeki ana düşünceyi destekleyen, açıklayan veya örnekleyen düşüncelerdir. Ana düşüncenin daha iyi anlaşılmasını sağlar ve metnin ayrıntılarını oluşturur.'}]",
+      "normalized_text": "[{'soru_no': 1, 'soru_metni': 'Paragrafın ana düşüncesi (ana fikir) nedir? Ana düşünce kavramını açıklayınız.', 'ogrenci_cevabi': 'Ana düşünce, bir metnin okuyucuya vermek istediği temel mesajdır. Yazarın anlatmak istediği ana fikir bu düşünceyle ifade edilir. Paragrafın tamamı bu ana düşünce etrafında şekillenir.'}, {'soru_no': 2, 'soru_metni': 'Yardımcı düşünceler nelerdir? Yardımcı düşüncelerin metnin anlaşılmasına nasıl katkı sağladığını açıklayınız.', 'ogrenci_cevabi': 'Yardımcı düşünce, metindeki ana düşünceyi destekleyen, açıklayan veya örnekleyen düşüncelerdir. Ana düşüncenin daha iyi anlaşılmasını sağlar ve metnin ayrıntılarını oluşturur.'}]",
+      "structured_data": [
+        {
+          "soru_no": 1,
+          "soru_metni": "Paragrafın ana düşüncesi (ana fikir) nedir? Ana düşünce kavramını açıklayınız.",
+          "ogrenci_cevabi": "Ana düşünce, bir metnin okuyucuya vermek istediği temel mesajdır. Yazarın anlatmak istediği ana fikir bu düşünceyle ifade edilir. Paragrafın tamamı bu ana düşünce etrafında şekillenir."
+        },
+        {
+          "soru_no": 2,
+          "soru_metni": "Yardımcı düşünceler nelerdir? Yardımcı düşüncelerin metnin anlaşılmasına nasıl katkı sağladığını açıklayınız.",
+          "ogrenci_cevabi": "Yardımcı düşünce, metindeki ana düşünceyi destekleyen, açıklayan veya örnekleyen düşüncelerdir. Ana düşüncenin daha iyi anlaşılmasını sağlar ve metnin ayrıntılarını oluşturur."
+        }
+      ],
+      "processing_steps": [
+        {
+          "step": 1,
+          "name": "Google Gemini API",
+          "description": "Görsel işleniyor ve sorular ayrıştırılıyor",
+          "status": "completed",
+          "result": "Veri başarıyla alındı"
+        }
+      ]
+    }
+  ]
+}

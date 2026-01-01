@@ -30,8 +30,8 @@ def analyze_with_ollama(ideal_cevap: str, ogrenci_cevabi: str, soru_metni: str =
         dict with 'llm_skoru' (0-100) and 'yorum' (feedback text)
     """
     try:
-        prompt = f"""Sen bir sınav değerlendirme asistanısın. Görevin öğrencinin cevabını analiz etmek ve EKSİK kısımları belirlemektir.
-
+        prompt = f"""Sen deneyimli bir öğretmensin. Görevin öğrencinin cevabını İÇERİK ve ANLAM açısından değerlendirmektir.
+        
 {'Soru: ' + soru_metni if soru_metni else ''}
 
 İdeal Cevap (Referans):
@@ -40,16 +40,17 @@ def analyze_with_ollama(ideal_cevap: str, ogrenci_cevabi: str, soru_metni: str =
 Öğrenci Cevabı:
 {ogrenci_cevabi}
 
-Lütfen şu adımları izle:
-1. Öğrenci cevabında, ideal cevaba göre EKSİK olan anahtar noktaları tespit et.
-2. Öğrenci cevabında YANLIŞ bilgi varsa belirt.
-3. Öğrenci cevabının ne kadar kapsamlı olduğunu 0 ile 100 arasında puanla.
+DEĞERLENDİRME KURALLARI (Çok Önemli - DİKKAT):
+1. ÖNCELİKLE DOĞRULUK KONTROLÜ YAP: Öğrenci cevabı yanlış bilgi, gerçek dışı iddia veya ideal cevapla ÇELİŞEN bilgi içeriyorsa DÜŞÜK PUAN (0-30 arası) ver.
+2. ANLAM EŞLEŞMESİ: Sadece bilgi DOĞRU ise anlam benzerliğine bak. Farklı cümlelerle doğruyu söylüyorsa tam puan ver.
+3. Yanlış cevapları asla "benzer" diye kabul etme. (Örn: "Güneş batıdan doğar" ile "Güneş doğudan doğar" anlamsal olarak benzerdir ama bilgi YANLIŞTIR. Puanı 0 olmalı.)
+4. "Eksik" ile "Yanlış"ı ayır. Eksik bilgi puan kırar, Yanlış bilgi puanı sıfırlar veya çok düşürür.
 
-Çıktını SADECE aşağıdaki JSON formatında ver, başka hiçbir metin veya düşünce zinciri (<think>...</think>) ekleme:
+Çıktını SADECE aşağıdaki JSON formatında ver:
 {{
   "puan": <0-100 arası sayı>,
-  "eksik_kisimlar": ["Eksik nokta 1", "Eksik nokta 2"],
-  "yorum": "<Genel değerlendirme ve varsa yanlışlar>"
+  "eksik_kisimlar": ["Eksik bilgi 1", "Yanlış bilgi: ..."],
+  "yorum": "<Önce cevabın doğru/yanlış olduğunu belirten, sonra eksikleri söyleyen net yorum>"
 }}
 """
 
@@ -63,7 +64,7 @@ Lütfen şu adımları izle:
         }
 
         logger.info(f"Sending request to Ollama ({OLLAMA_MODEL})...")
-        response = requests.post(OLLAMA_API_URL, json=payload, timeout=60)
+        response = requests.post(OLLAMA_API_URL, json=payload, timeout=300)
         
         if response.status_code != 200:
             logger.error(f"Ollama API error: {response.text}")
@@ -121,14 +122,20 @@ Lütfen şu adımları izle:
 
 def calculate_final_score(bert_skoru: float, llm_skoru: float) -> float:
     """
-    Calculate hybrid final score.
-    Now relying more on LLM for logic and BERT for semantic coverage.
+    Calculate hybrid final score with Logic Gate.
+    If LLM says the answer is wrong (low logic score), SBERT similarity shouldn't save it.
     """
-    # Formula: (BERT * 40%) + (LLM * 60%)
-    bert_contribution = bert_skoru * 40
-    llm_contribution = llm_skoru * 0.6
-    
-    final_puan = bert_contribution + llm_contribution
+    # Logic Gate: If LLM score is low (indicating wrong answer or contradiction),
+    # ignore SBERT score to prevent false positives.
+    if llm_skoru < 40:
+        logger.info(f"LLM Score is low ({llm_skoru}), overriding SBERT score.")
+        final_puan = llm_skoru # Direct fail
+    else:
+        # Standard Hybrid Formula: (BERT * 40%) + (LLM * 60%)
+        bert_contribution = bert_skoru * 40
+        llm_contribution = llm_skoru * 0.6
+        final_puan = bert_contribution + llm_contribution
+        
     final_puan = max(0, min(100, final_puan))
     
     return round(final_puan, 2)

@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Configure Gemini with hardcoded API key
-api_key = "AIzaSyAUVkzhtCfRmKYpSVOeejRCSs_74mPVqF4"
+api_key = "AIzaSyDUUTqpZlVuJmHXI0AqCO2ymNIzpxl__iQ"
 genai.configure(api_key=api_key)
 
 def get_gemini_model():
@@ -33,25 +33,44 @@ def extract_text_from_image(image: Image.Image, prompt: str = None) -> str:
         prompt: Optional custom prompt. If None, uses default Turkish OCR prompt.
         
     Returns:
-        Extracted raw text as string
+        Structured list of questions/answers or raw text string
     """
     try:
         model = get_gemini_model()
         
         if prompt is None:
+            # Updated prompt for structured extraction
             prompt = (
-                "Bu görseldeki yazıları oku ve metne dök. "
-                "Her satırı ayrı bir satır olarak yaz. "
-                "Görselde satır değiştiğinde çıktıda da \\n ile yeni satıra geç. "
-                "Türkçe karakterlere (ç, ş, ğ, ü, ö, ı, İ) dikkat et. "
-                "Sadece metni yaz, yorum ekleme."
+                "Bu görseldeki sınav kağıdını incele ve tüm soruları ayrı ayrı tespit et. "
+                "Her bir soru için şu bilgileri JSON formatında çıkar:\n"
+                "1. 'soru_no': Soru numarası (yoksa 1'den başlayarak ver)\n"
+                "2. 'soru_metni': Sorunun metni (sadece soru kısmı, cevap değil)\n"
+                "3. 'ogrenci_cevabi': Öğrencinin el yazısıyla verdiği cevap metni\n\n"
+                "Kurallar:\n"
+                "- Sadece JSON listesi döndür: [{'soru_no': 1, 'soru_metni': '...', 'ogrenci_cevabi': '...'}, ...]\n"
+                "- Markdown (```json ... ```) kullanma, sadece saf JSON ver.\n"
+                "- Türkçe karakterlere dikkat et.\n"
+                "- Cevap yoksa boş string ver."
             )
             
         response = model.generate_content([prompt, image])
         text = response.text
         
-        logger.info(f"Gemini extracted {len(text)} characters")
-        return text.strip()
+        # Try to parse JSON output
+        cleaned_text = text.strip()
+        if cleaned_text.startswith('```json'):
+            cleaned_text = cleaned_text[7:-3].strip()
+        elif cleaned_text.startswith('```'):
+            cleaned_text = cleaned_text[3:-3].strip()
+            
+        import json
+        try:
+            structured_data = json.loads(cleaned_text)
+            logger.info("Gemini returned valid structured JSON")
+            return structured_data
+        except json.JSONDecodeError:
+            logger.warning("Gemini did not return valid JSON, falling back to raw text")
+            return text.strip()
         
     except Exception as e:
         logger.error(f"Gemini OCR failed: {e}")
@@ -59,13 +78,14 @@ def extract_text_from_image(image: Image.Image, prompt: str = None) -> str:
 
 def normalize_text(text: str) -> str:
     """
-    Normalize text - Gemini usually gives clean output, but we ensure consistency.
+    Normalize text - kept for backward compatibility if raw text is returned.
     """
+    if not isinstance(text, str):
+        return text  # Return as-is if it's already a list/dict
+        
     if not text:
         return ""
     
-    # Basic normalization - preserve line breaks and Turkish characters
-    # Remove extra whitespace within lines, but keep line breaks
     lines = text.split('\n')
     lines = [" ".join(line.split()) for line in lines]
     text = '\n'.join(lines)
@@ -75,14 +95,7 @@ def normalize_text(text: str) -> str:
 def process_image_ocr(image: Image.Image, debug_dir: str = None) -> dict:
     """
     Complete OCR processing pipeline using Gemini.
-    Maintains compatibility with frontend response structure.
-    
-    Args:
-        image: PIL Image object
-        debug_dir: Unused in Cloud OCR but kept for signature compatibility
-        
-    Returns:
-        Dictionary with 'raw_text', 'normalized_text', and 'processing_steps'
+    Can return either structured JSON (list) or raw text compatibility object.
     """
     processing_steps = []
     
@@ -91,31 +104,31 @@ def process_image_ocr(image: Image.Image, debug_dir: str = None) -> dict:
         processing_steps.append({
             'step': 1,
             'name': 'Google Gemini API',
-            'description': 'Görsel Google sunucularına gönderiliyor ve işleniyor',
+            'description': 'Görsel işleniyor ve sorular ayrıştırılıyor',
             'status': 'in_progress'
         })
         
-        raw_text = extract_text_from_image(image)
+        result = extract_text_from_image(image)
         
         processing_steps[0]['status'] = 'completed'
-        processing_steps[0]['result'] = 'Metin başarıyla alındı'
+        processing_steps[0]['result'] = 'Veri başarıyla alındı'
         
-        # Step 2: Normalization
-        processing_steps.append({
-            'step': 2,
-            'name': 'Metin Normalizasyonu',
-            'description': 'Metin standart formata getiriliyor',
-            'status': 'completed',
-            'result': 'Tamamlandı'
-        })
-        
-        normalized_text = normalize_text(raw_text)
-        
-        return {
-            'raw_text': raw_text,
-            'normalized_text': normalized_text,
-            'processing_steps': processing_steps
-        }
+        # Check if result is structured list
+        if isinstance(result, list):
+            return {
+                'structured_data': result,  # New field for structured questions
+                'raw_text': str(result),    # Kept for compatibility
+                'normalized_text': str(result),
+                'processing_steps': processing_steps
+            }
+        else:
+            # Fallback for plain text
+            normalized_text = normalize_text(result)
+            return {
+                'raw_text': result,
+                'normalized_text': normalized_text,
+                'processing_steps': processing_steps
+            }
         
     except Exception as e:
         if processing_steps:

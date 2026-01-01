@@ -276,6 +276,7 @@ async def upload_pdf(file: UploadFile = File(...)):
                     "text": ocr_result['normalized_text'],
                     "raw_text": ocr_result['raw_text'],
                     "normalized_text": ocr_result['normalized_text'],
+                    "structured_data": ocr_result.get('structured_data', []),  # Pass structured questions
                     "processing_steps": ocr_result.get('processing_steps', [])
                 })
                 

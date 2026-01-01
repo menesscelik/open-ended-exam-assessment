@@ -1,0 +1,34 @@
+{
+  "id": "dbed17d0-d30c-4957-ae8a-15e2ecd5986f",
+  "filename": "New Microsoft Word Document.pdf",
+  "page_count": 1,
+  "pages": [
+    {
+      "page": 1,
+      "text": "[{'soru_no': 1, 'soru_metni': 'Paragrafın ana düşüncesi (ana fikir) nedir? Ana düşünce kavramını açıklayınız.', 'ogrenci_cevabi': 'Ana düşünce, bir metnin okuyucuya vermek istediği temel mesajdır. Yazarın anlatmak istediği ana fikir bu düşünceyle ifade edilir. Paragrafın tamamı bu ana düşünce etrafında şekillenir.'}, {'soru_no': 2, 'soru_metni': 'Yardımcı düşünceler, yazarın asıl anlatmak istediği fikri güçlendirmek için kullandığı açıklamalar ve ayrıntılardır. Bu düşünceler sayesinde okuyucu, metnin ana mesajını daha kolay kavrar.', 'ogrenci_cevabi': 'Yardımcı düşünceler, yazarın asıl anlatmak istediği fikri güçlendirmek için kullandığı açıklamalar ve ayrıntılardır. Bu düşünceler sayesinde okuyucu, metnin ana mesajını daha kolay kavrar.'}]",
+      "raw_text": "[{'soru_no': 1, 'soru_metni': 'Paragrafın ana düşüncesi (ana fikir) nedir? Ana düşünce kavramını açıklayınız.', 'ogrenci_cevabi': 'Ana düşünce, bir metnin okuyucuya vermek istediği temel mesajdır. Yazarın anlatmak istediği ana fikir bu düşünceyle ifade edilir. Paragrafın tamamı bu ana düşünce etrafında şekillenir.'}, {'soru_no': 2, 'soru_metni': 'Yardımcı düşünceler, yazarın asıl anlatmak istediği fikri güçlendirmek için kullandığı açıklamalar ve ayrıntılardır. Bu düşünceler sayesinde okuyucu, metnin ana mesajını daha kolay kavrar.', 'ogrenci_cevabi': 'Yardımcı düşünceler, yazarın asıl anlatmak istediği fikri güçlendirmek için kullandığı açıklamalar ve ayrıntılardır. Bu düşünceler sayesinde okuyucu, metnin ana mesajını daha kolay kavrar.'}]",
+      "normalized_text": "[{'soru_no': 1, 'soru_metni': 'Paragrafın ana düşüncesi (ana fikir) nedir? Ana düşünce kavramını açıklayınız.', 'ogrenci_cevabi': 'Ana düşünce, bir metnin okuyucuya vermek istediği temel mesajdır. Yazarın anlatmak istediği ana fikir bu düşünceyle ifade edilir. Paragrafın tamamı bu ana düşünce etrafında şekillenir.'}, {'soru_no': 2, 'soru_metni': 'Yardımcı düşünceler, yazarın asıl anlatmak istediği fikri güçlendirmek için kullandığı açıklamalar ve ayrıntılardır. Bu düşünceler sayesinde okuyucu, metnin ana mesajını daha kolay kavrar.', 'ogrenci_cevabi': 'Yardımcı düşünceler, yazarın asıl anlatmak istediği fikri güçlendirmek için kullandığı açıklamalar ve ayrıntılardır. Bu düşünceler sayesinde okuyucu, metnin ana mesajını daha kolay kavrar.'}]",
+      "structured_data": [
+        {
+          "soru_no": 1,
+          "soru_metni": "Paragrafın ana düşüncesi (ana fikir) nedir? Ana düşünce kavramını açıklayınız.",
+          "ogrenci_cevabi": "Ana düşünce, bir metnin okuyucuya vermek istediği temel mesajdır. Yazarın anlatmak istediği ana fikir bu düşünceyle ifade edilir. Paragrafın tamamı bu ana düşünce etrafında şekillenir."
+        },
+        {
+          "soru_no": 2,
+          "soru_metni": "Yardımcı düşünceler, yazarın asıl anlatmak istediği fikri güçlendirmek için kullandığı açıklamalar ve ayrıntılardır. Bu düşünceler sayesinde okuyucu, metnin ana mesajını daha kolay kavrar.",
+          "ogrenci_cevabi": "Yardımcı düşünceler, yazarın asıl anlatmak istediği fikri güçlendirmek için kullandığı açıklamalar ve ayrıntılardır. Bu düşünceler sayesinde okuyucu, metnin ana mesajını daha kolay kavrar."
+        }
+      ],
+      "processing_steps": [
+        {
+          "step": 1,
+          "name": "Google Gemini API",
+          "description": "Görsel işleniyor ve sorular ayrıştırılıyor",
+          "status": "completed",
+          "result": "Veri başarıyla alındı"
+        }
+      ]
+    }
+  ]
+}

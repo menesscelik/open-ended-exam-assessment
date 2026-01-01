@@ -71,12 +71,36 @@ function App() {
       const data = await response.json();
       setResult(data);
 
-      const editable = data.pages.map((page) => ({
-        page: page.page,
-        soru_no: page.page,
-        ideal_cevap: '',
-        ogrenci_cevabi: page.text || page.raw_text || ''
-      }));
+      let editable = [];
+
+      // Process each page
+      if (data.pages && data.pages.length > 0) {
+        for (const page of data.pages) {
+          // Check if we have structured data (multiple questions detected)
+          if (page.structured_data && Array.isArray(page.structured_data) && page.structured_data.length > 0) {
+            // Add each detected question as a separate item
+            for (const item of page.structured_data) {
+              editable.push({
+                page: page.page,
+                soru_no: item.soru_no || editable.length + 1,
+                soru_metni: item.soru_metni || '',
+                ideal_cevap: '',
+                ogrenci_cevabi: item.ogrenci_cevabi || ''
+              });
+            }
+          } else {
+            // Fallback: One big text block per page
+            editable.push({
+              page: page.page,
+              soru_no: page.page, // Just use page number as question number
+              soru_metni: '',
+              ideal_cevap: '',
+              ogrenci_cevabi: page.text || page.raw_text || ''
+            });
+          }
+        }
+      }
+
       setEditableResults(editable);
       setShowConfirm(true);
     } catch (err) {
@@ -202,8 +226,8 @@ function App() {
                 onClick={handleUpload}
                 disabled={!file || loading}
                 className={`flex items-center gap-2 px-8 py-3 rounded-lg text-white font-semibold shadow-lg transition-all ${!file || loading
-                    ? 'bg-slate-400 cursor-not-allowed'
-                    : 'bg-indigo-600 hover:bg-indigo-700 hover:scale-[1.02]'
+                  ? 'bg-slate-400 cursor-not-allowed'
+                  : 'bg-indigo-600 hover:bg-indigo-700 hover:scale-[1.02]'
                   }`}
               >
                 {loading ? (
@@ -229,37 +253,40 @@ function App() {
                 Puanlama Sonuçları
               </h2>
 
-              {scoringResults.map((res, index) => (
-                <div key={index} className={`mb-4 p-6 rounded-xl border ${res.error ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-lg font-semibold text-slate-800">Soru {res.soru_no}</span>
-                    {!res.error && (
-                      <span className="text-3xl font-bold text-green-600">{res.final_puan}/100</span>
+              {scoringResults.map((res, index) => {
+                const isLowScore = !res.error && res.final_puan < 40;
+                return (
+                  <div key={index} className={`mb-4 p-6 rounded-xl border ${res.error ? 'bg-red-50 border-red-200' : (isLowScore ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200')}`}>
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-lg font-semibold text-slate-800">Soru {res.soru_no}</span>
+                      {!res.error && (
+                        <span className={`text-3xl font-bold ${isLowScore ? 'text-red-600' : 'text-green-600'}`}>{res.final_puan}/100</span>
+                      )}
+                    </div>
+
+                    {res.error ? (
+                      <p className="text-red-600">{res.error}</p>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-2 gap-4 mb-4">
+                          <div className="bg-white p-3 rounded-lg">
+                            <div className="text-sm text-slate-500">SBERT Cümlesel Benzerlik</div>
+                            <div className="text-xl font-bold text-indigo-600">{(res.bert_skoru * 100).toFixed(1)}%</div>
+                          </div>
+                          <div className="bg-white p-3 rounded-lg">
+                            <div className="text-sm text-slate-500">LLM Mantık Puanı</div>
+                            <div className="text-xl font-bold text-purple-600">{res.llm_skoru}/100</div>
+                          </div>
+                        </div>
+                        <div className="bg-white p-4 rounded-lg">
+                          <div className="text-sm font-medium text-slate-500 mb-1">Değerlendirme</div>
+                          <p className="text-slate-700">{res.yorum}</p>
+                        </div>
+                      </>
                     )}
                   </div>
-
-                  {res.error ? (
-                    <p className="text-red-600">{res.error}</p>
-                  ) : (
-                    <>
-                      <div className="grid grid-cols-2 gap-4 mb-4">
-                        <div className="bg-white p-3 rounded-lg">
-                          <div className="text-sm text-slate-500">BERT Benzerlik</div>
-                          <div className="text-xl font-bold text-indigo-600">{(res.bert_skoru * 100).toFixed(1)}%</div>
-                        </div>
-                        <div className="bg-white p-3 rounded-lg">
-                          <div className="text-sm text-slate-500">LLM Mantık Puanı</div>
-                          <div className="text-xl font-bold text-purple-600">{res.llm_skoru}/100</div>
-                        </div>
-                      </div>
-                      <div className="bg-white p-4 rounded-lg">
-                        <div className="text-sm font-medium text-slate-500 mb-1">Değerlendirme</div>
-                        <p className="text-slate-700">{res.yorum}</p>
-                      </div>
-                    </>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -280,6 +307,11 @@ function App() {
                     <span className="bg-indigo-100 text-indigo-700 text-sm font-medium px-3 py-1 rounded-full">
                       Soru {item.soru_no}
                     </span>
+                    {item.soru_metni && (
+                      <span className="text-slate-600 text-sm italic border-l-2 border-indigo-200 pl-2">
+                        "{item.soru_metni}"
+                      </span>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -319,8 +351,8 @@ function App() {
                   onClick={handleConfirmAndScore}
                   disabled={scoring}
                   className={`flex items-center gap-2 px-8 py-3 font-semibold rounded-lg shadow-lg transition-colors ${scoring
-                      ? 'bg-slate-400 cursor-not-allowed text-white'
-                      : 'bg-green-600 text-white hover:bg-green-700'
+                    ? 'bg-slate-400 cursor-not-allowed text-white'
+                    : 'bg-green-600 text-white hover:bg-green-700'
                     }`}
                 >
                   {scoring ? (
