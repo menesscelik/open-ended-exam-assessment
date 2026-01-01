@@ -1,0 +1,29 @@
+{
+  "id": "1efb4abe-da64-494f-bd83-7e5e9e3b6df8",
+  "filename": "b8dfaf00-a1b2-4653-a8d8-8ad6380197fb (2).pdf",
+  "page_count": 1,
+  "pages": [
+    {
+      "page": 1,
+      "text": "g elikler\nalaşımsız ve az alaşımlı çelikler korozif etkilere dayanıklı değillerdir.\ndemir, karbon, silisyum, mangan ve az miktarda fosfor ve kükürtten oluşan çelik, karbon\nçeliği (alaşımsız çelik) olarak adlandırılır.\nalaşımlı çelikler:\n- alüminyum, krom, nikel, kobalt, bakır, mangan, molibden, fosfor, silisyum, kükürt, titanyum, tungsten\nve vanadyum içerebilirler.\nalaşım elementlerinin çeliklere sağladıkları avantajlar\n→ sertleşme kabiliyetini arttırırlar.\n→ olağan sıcaklıklarda mukavemeti iyileştirirler.\n→ düşük ve yüksek sıcaklıklardaki mekanik özellikleri iyileştirirler.\n→ sertlik (mukavemet) ve tokluk arasındaki optimizasyona yardımcı olur.\n→ aşınma direncini arttırır.\n→ korozyon direncini arttırır.\n→ manyetik özellikleri düzeltirler.\n• karbon\nkarbon, çelikte bulunan ana elementtir.\nkarbon, demirle katı çözelti yaparak mukavemet ve sertliği artırdığı gibi, kuvvetli\nkarbürler oluşturarak aşınma direncini de artırır.\n• krom\nçeliğin yüksek sıcaklıklarda mekanik özelliklerini korumasını sağlar.\n• mangan\nher tür çelikte bulunan elementtir.\nçeliğe ergitme prosesleri sırasında oksijen tutucu olarak katılır.\n• silisyum\nçeliklerin mukavemetini ve özgül ağırlığını arttırmak için kullanılır.",
+      "raw_text": "G ELİKLER\nAlaşımsız ve az alaşımlı çelikler korozif etkilere dayanıklı değillerdir.\nDemir, karbon, silisyum, mangan ve az miktarda fosfor ve kükürtten oluşan çelik, karbon\nçeliği (alaşımsız çelik) olarak adlandırılır.\nAlaşımlı çelikler:\n- Alüminyum, krom, nikel, kobalt, bakır, mangan, molibden, fosfor, silisyum, kükürt, titanyum, tungsten\nve vanadyum içerebilirler.\nAlaşım Elementlerinin Çeliklere Sağladıkları Avantajlar\n→ Sertleşme kabiliyetini arttırırlar.\n→ Olağan sıcaklıklarda mukavemeti iyileştirirler.\n→ Düşük ve yüksek sıcaklıklardaki mekanik özellikleri iyileştirirler.\n→ Sertlik (mukavemet) ve tokluk arasındaki optimizasyona yardımcı olur.\n→ Aşınma direncini arttırır.\n→ Korozyon direncini arttırır.\n→ Manyetik özellikleri düzeltirler.\n• KARBON\nKarbon, çelikte bulunan ana elementtir.\nKarbon, demirle katı çözelti yaparak mukavemet ve sertliği artırdığı gibi, kuvvetli\nkarbürler oluşturarak aşınma direncini de artırır.\n• Krom\nÇeliğin yüksek sıcaklıklarda mekanik özelliklerini korumasını sağlar.\n• Mangan\nHer tür çelikte bulunan elementtir.\nÇeliğe ergitme prosesleri sırasında oksijen tutucu olarak katılır.\n• Silisyum\nÇeliklerin mukavemetini ve özgül ağırlığını arttırmak için kullanılır.",
+      "normalized_text": "g elikler\nalaşımsız ve az alaşımlı çelikler korozif etkilere dayanıklı değillerdir.\ndemir, karbon, silisyum, mangan ve az miktarda fosfor ve kükürtten oluşan çelik, karbon\nçeliği (alaşımsız çelik) olarak adlandırılır.\nalaşımlı çelikler:\n- alüminyum, krom, nikel, kobalt, bakır, mangan, molibden, fosfor, silisyum, kükürt, titanyum, tungsten\nve vanadyum içerebilirler.\nalaşım elementlerinin çeliklere sağladıkları avantajlar\n→ sertleşme kabiliyetini arttırırlar.\n→ olağan sıcaklıklarda mukavemeti iyileştirirler.\n→ düşük ve yüksek sıcaklıklardaki mekanik özellikleri iyileştirirler.\n→ sertlik (mukavemet) ve tokluk arasındaki optimizasyona yardımcı olur.\n→ aşınma direncini arttırır.\n→ korozyon direncini arttırır.\n→ manyetik özellikleri düzeltirler.\n• karbon\nkarbon, çelikte bulunan ana elementtir.\nkarbon, demirle katı çözelti yaparak mukavemet ve sertliği artırdığı gibi, kuvvetli\nkarbürler oluşturarak aşınma direncini de artırır.\n• krom\nçeliğin yüksek sıcaklıklarda mekanik özelliklerini korumasını sağlar.\n• mangan\nher tür çelikte bulunan elementtir.\nçeliğe ergitme prosesleri sırasında oksijen tutucu olarak katılır.\n• silisyum\nçeliklerin mukavemetini ve özgül ağırlığını arttırmak için kullanılır.",
+      "processing_steps": [
+        {
+          "step": 1,
+          "name": "Google Gemini API",
+          "description": "Görsel Google sunucularına gönderiliyor ve işleniyor",
+          "status": "completed",
+          "result": "Metin başarıyla alındı"
+        },
+        {
+          "step": 2,
+          "name": "Metin Normalizasyonu",
+          "description": "Metin standart formata getiriliyor",
+          "status": "completed",
+          "result": "Tamamlandı"
+        }
+      ]
+    }
+  ]
+}
