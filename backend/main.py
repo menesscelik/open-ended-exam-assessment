@@ -131,6 +131,38 @@ def get_ogrenci_sonuclari(
 
 # ==================== PUANLAMA ====================
 
+@app.post("/api/puanla-direkt")
+def puanla_direkt(
+    ideal_cevap: str,
+    ogrenci_cevabi: str,
+    soru_metni: str = ""
+):
+    """
+    Doğrudan puanlama - veritabanı gerektirmez.
+    İdeal cevap ve öğrenci cevabını karşılaştırarak puan verir.
+    """
+    from scoring import evaluate_answer
+    
+    if not ideal_cevap or not ogrenci_cevabi:
+        raise HTTPException(status_code=400, detail="İdeal cevap ve öğrenci cevabı gerekli.")
+    
+    # Perform evaluation
+    result = evaluate_answer(
+        ideal_cevap=ideal_cevap,
+        ogrenci_cevabi=ogrenci_cevabi,
+        soru_metni=soru_metni,
+        anahtar_kelimeler=""
+    )
+    
+    return {
+        "success": True,
+        "bert_skoru": result['bert_skoru'],
+        "llm_skoru": result['llm_skoru'],
+        "final_puan": result['final_puan'],
+        "yorum": result['yorum']
+    }
+
+
 @app.post("/api/puanla")
 def puanla_cevap(
     sinav_id: str,
@@ -140,19 +172,20 @@ def puanla_cevap(
     db: Session = Depends(get_db)
 ):
     """
-    Öğrenci cevabını puanla.
-    BERTurk benzerlik + Gemini mantık analizi ile hibrit puanlama yapar.
+    Veritabanından ideal cevabı alarak puanlama yapar.
+    Önce Hoca Panelinden soruyu eklemeniz gerekir.
     """
     from scoring import evaluate_answer
     
-    # Get the question and ideal answer
+    # Get the question and ideal answer from database (case-insensitive)
+    from sqlalchemy import func
     soru = db.query(SinavSorulari).filter(
-        SinavSorulari.sinav_id == sinav_id,
+        func.lower(SinavSorulari.sinav_id) == sinav_id.lower(),
         SinavSorulari.soru_no == soru_no
     ).first()
     
     if not soru:
-        raise HTTPException(status_code=404, detail="Soru bulunamadı. Önce Hoca Panelinden soruyu ekleyin.")
+        raise HTTPException(status_code=404, detail=f"Soru bulunamadı. sinav_id='{sinav_id}', soru_no={soru_no}")
     
     # Perform evaluation
     result = evaluate_answer(
