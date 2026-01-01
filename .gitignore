@@ -26,3 +26,15 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Data & Results
+backend/results/
+backend/processed_images/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# System
+.VSCodeCounter/
