@@ -6,3 +6,7 @@ pytesseract
 pillow
 google-generativeai
 python-dotenv
+sqlalchemy
+sentence-transformers
+torch
+numpy

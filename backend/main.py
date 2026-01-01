@@ -1,7 +1,8 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pdf2image import convert_from_bytes
 from PIL import Image
+from sqlalchemy.orm import Session
 import io
 import os
 import uuid
@@ -9,11 +10,17 @@ import json
 from typing import List, Dict, Any
 from dotenv import load_dotenv
 from ocr_utils import process_image_ocr
+from database import get_db, init_db
+from models import SinavSorulari, OgrenciSonuclari
+from schemas import (
+    SinavSorusuCreate, SinavSorusuUpdate, SinavSorusuResponse,
+    OgrenciSonucuCreate, OgrenciSonucuResponse
+)
 
 # Load environment variables
 load_dotenv()
 
-app = FastAPI(title="Exam Grading System Backend - TrOCR Handwriting Recognition")
+app = FastAPI(title="Otomatik Sınav Değerlendirme Sistemi")
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,6 +30,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Initialize database on startup
+@app.on_event("startup")
+def startup_event():
+    init_db()
+
 # Poppler yolu (Windows için PDF işleme)
 POPPLER_PATH = r'C:\Program Files\poppler\Library\bin'  
 if not os.path.exists(POPPLER_PATH):
@@ -30,22 +42,157 @@ if not os.path.exists(POPPLER_PATH):
 
 @app.get("/")
 async def root():
-    return {"message": "Exam Grading System Backend - TrOCR Handwriting Recognition Active"}
+    return {"message": "Otomatik Sınav Değerlendirme Sistemi - Aktif"}
 
 @app.get("/model-info")
 async def model_info():
     """Get information about the OCR backend."""
     return {
-        "model_type": "Google Gemini 1.5 Flash",
+        "model_type": "Google Gemini Flash",
         "provider": "Google Cloud",
         "status": "Active"
     }
 
 
+# ==================== SINAV SORULARI CRUD ====================
+
+@app.post("/api/sinav-sorulari", response_model=SinavSorusuResponse)
+def create_sinav_sorusu(soru: SinavSorusuCreate, db: Session = Depends(get_db)):
+    """Yeni sınav sorusu ekle."""
+    db_soru = SinavSorulari(**soru.model_dump())
+    db.add(db_soru)
+    db.commit()
+    db.refresh(db_soru)
+    return db_soru
+
+
+@app.get("/api/sinav-sorulari", response_model=List[SinavSorusuResponse])
+def get_sinav_sorulari(sinav_id: str = None, db: Session = Depends(get_db)):
+    """Tüm sınav sorularını getir veya sinav_id'ye göre filtrele."""
+    query = db.query(SinavSorulari)
+    if sinav_id:
+        query = query.filter(SinavSorulari.sinav_id == sinav_id)
+    return query.order_by(SinavSorulari.sinav_id, SinavSorulari.soru_no).all()
+
+
+@app.get("/api/sinav-sorulari/{soru_id}", response_model=SinavSorusuResponse)
+def get_sinav_sorusu(soru_id: int, db: Session = Depends(get_db)):
+    """Belirli bir soruyu getir."""
+    soru = db.query(SinavSorulari).filter(SinavSorulari.id == soru_id).first()
+    if not soru:
+        raise HTTPException(status_code=404, detail="Soru bulunamadı")
+    return soru
+
+
+@app.put("/api/sinav-sorulari/{soru_id}", response_model=SinavSorusuResponse)
+def update_sinav_sorusu(soru_id: int, updates: SinavSorusuUpdate, db: Session = Depends(get_db)):
+    """Soruyu güncelle."""
+    soru = db.query(SinavSorulari).filter(SinavSorulari.id == soru_id).first()
+    if not soru:
+        raise HTTPException(status_code=404, detail="Soru bulunamadı")
+    
+    update_data = updates.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(soru, key, value)
+    
+    db.commit()
+    db.refresh(soru)
+    return soru
+
+
+@app.delete("/api/sinav-sorulari/{soru_id}")
+def delete_sinav_sorusu(soru_id: int, db: Session = Depends(get_db)):
+    """Soruyu sil."""
+    soru = db.query(SinavSorulari).filter(SinavSorulari.id == soru_id).first()
+    if not soru:
+        raise HTTPException(status_code=404, detail="Soru bulunamadı")
+    
+    db.delete(soru)
+    db.commit()
+    return {"message": "Soru silindi"}
+
+
+# ==================== ÖĞRENCI SONUÇLARI ====================
+
+@app.get("/api/ogrenci-sonuclari", response_model=List[OgrenciSonucuResponse])
+def get_ogrenci_sonuclari(
+    sinav_id: str = None, 
+    ogrenci_id: str = None, 
+    db: Session = Depends(get_db)
+):
+    """Öğrenci sonuçlarını getir."""
+    query = db.query(OgrenciSonuclari)
+    if sinav_id:
+        query = query.filter(OgrenciSonuclari.sinav_id == sinav_id)
+    if ogrenci_id:
+        query = query.filter(OgrenciSonuclari.ogrenci_id == ogrenci_id)
+    return query.all()
+
+
+# ==================== PUANLAMA ====================
+
+@app.post("/api/puanla")
+def puanla_cevap(
+    sinav_id: str,
+    soru_no: int,
+    ogrenci_id: str,
+    ogrenci_cevabi: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Öğrenci cevabını puanla.
+    BERTurk benzerlik + Gemini mantık analizi ile hibrit puanlama yapar.
+    """
+    from scoring import evaluate_answer
+    
+    # Get the question and ideal answer
+    soru = db.query(SinavSorulari).filter(
+        SinavSorulari.sinav_id == sinav_id,
+        SinavSorulari.soru_no == soru_no
+    ).first()
+    
+    if not soru:
+        raise HTTPException(status_code=404, detail="Soru bulunamadı. Önce Hoca Panelinden soruyu ekleyin.")
+    
+    # Perform evaluation
+    result = evaluate_answer(
+        ideal_cevap=soru.ideal_cevap,
+        ogrenci_cevabi=ogrenci_cevabi,
+        soru_metni=soru.soru_metni,
+        anahtar_kelimeler=soru.anahtar_kelimeler or ""
+    )
+    
+    # Save result to database
+    sonuc = OgrenciSonuclari(
+        sinav_id=sinav_id,
+        ogrenci_id=ogrenci_id,
+        soru_no=soru_no,
+        ogrenci_cevabi=ogrenci_cevabi,
+        bert_skoru=result['bert_skoru'],
+        llm_skoru=result['llm_skoru'],
+        final_puan=result['final_puan'],
+        yorum=result['yorum']
+    )
+    db.add(sonuc)
+    db.commit()
+    db.refresh(sonuc)
+    
+    return {
+        "success": True,
+        "sonuc_id": sonuc.id,
+        "bert_skoru": result['bert_skoru'],
+        "llm_skoru": result['llm_skoru'],
+        "final_puan": result['final_puan'],
+        "yorum": result['yorum']
+    }
+
+
+# ==================== OCR UPLOAD ====================
+
 @app.post("/upload")
 async def upload_pdf(file: UploadFile = File(...)):
     """
-    Endpoint to upload a PDF or image file, perform OCR using EasyOCR (Turkish),
+    Endpoint to upload a PDF or image file, perform OCR using Gemini Vision,
     normalize text, and return extracted text.
     """
     try:
@@ -58,7 +205,6 @@ async def upload_pdf(file: UploadFile = File(...)):
         images = []
         if file.filename.lower().endswith('.pdf'):
             # Convert PDF to images with higher DPI for better OCR
-            # DPI=300 is standard for high quality OCR
             if os.path.exists(POPPLER_PATH):
                 images = convert_from_bytes(contents, poppler_path=POPPLER_PATH, dpi=300)
             else:
@@ -87,7 +233,6 @@ async def upload_pdf(file: UploadFile = File(...)):
         for i, image in enumerate(images):
             try:
                 # Perform OCR and normalization using our utility module
-                # Create a specific debug dir for this page's lines
                 page_debug_dir = os.path.join(save_dir, f"page_{i+1}")
                 os.makedirs(page_debug_dir, exist_ok=True)
                 
@@ -95,14 +240,13 @@ async def upload_pdf(file: UploadFile = File(...)):
                 
                 extracted_data.append({
                     "page": i + 1,
-                    "text": ocr_result['normalized_text'],  # Normalized text for display
-                    "raw_text": ocr_result['raw_text'],     # Raw OCR output
-                    "normalized_text": ocr_result['normalized_text'],  # Explicitly include normalized
-                    "processing_steps": ocr_result.get('processing_steps', [])  # Processing steps for visualization
+                    "text": ocr_result['normalized_text'],
+                    "raw_text": ocr_result['raw_text'],
+                    "normalized_text": ocr_result['normalized_text'],
+                    "processing_steps": ocr_result.get('processing_steps', [])
                 })
                 
             except Exception as ocr_error:
-                # Handle OCR errors gracefully for individual pages
                 extracted_data.append({
                     "page": i + 1,
                     "text": "",
@@ -132,4 +276,3 @@ async def upload_pdf(file: UploadFile = File(...)):
             status_code=500,
             detail=f"Dosya işlenirken bir hata oluştu: {str(e)}"
         )
-
