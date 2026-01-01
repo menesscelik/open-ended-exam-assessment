@@ -10,3 +10,4 @@ sqlalchemy
 sentence-transformers
 torch
 numpy
+requests

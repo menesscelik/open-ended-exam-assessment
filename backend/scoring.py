@@ -1,28 +1,25 @@
 """
 Hybrid Scoring Module
-Combines BERTurk similarity with Gemini LLM analysis
+Combines BERTurk similarity (SBERT) with Ollama (Local LLM) analysis
 """
 
 import logging
 import json
 import re
-import google.generativeai as genai
+import requests
+import json
 
 logger = logging.getLogger(__name__)
 
-# Configure Gemini with hardcoded API key
-api_key = "AIzaSyAUVkzhtCfRmKYpSVOeejRCSs_74mPVqF4"
-genai.configure(api_key=api_key)
+# Ollama Configuration
+OLLAMA_API_URL = "http://127.0.0.1:11434/api/generate"
+# Using deepseek-r1:8b as requested/available
+OLLAMA_MODEL = "deepseek-r1:8b"
 
 
-def get_gemini_model():
-    """Returns the configured Gemini model for scoring."""
-    return genai.GenerativeModel('gemini-flash-latest')
-
-
-def analyze_with_gemini(ideal_cevap: str, ogrenci_cevabi: str, soru_metni: str = "") -> dict:
+def analyze_with_ollama(ideal_cevap: str, ogrenci_cevabi: str, soru_metni: str = "") -> dict:
     """
-    Analyze student answer using Gemini LLM.
+    Analyze student answer using local Ollama model (DeepSeek R1).
     
     Args:
         ideal_cevap: The ideal/expected answer
@@ -33,83 +30,106 @@ def analyze_with_gemini(ideal_cevap: str, ogrenci_cevabi: str, soru_metni: str =
         dict with 'llm_skoru' (0-100) and 'yorum' (feedback text)
     """
     try:
-        model = get_gemini_model()
-        
-        prompt = f"""Sen bir sınav değerlendirme asistanısın. Aşağıdaki öğrenci cevabını ideal cevapla karşılaştır ve değerlendir.
+        prompt = f"""Sen bir sınav değerlendirme asistanısın. Görevin öğrencinin cevabını analiz etmek ve EKSİK kısımları belirlemektir.
 
-{"Soru: " + soru_metni if soru_metni else ""}
+{'Soru: ' + soru_metni if soru_metni else ''}
 
-İdeal Cevap:
+İdeal Cevap (Referans):
 {ideal_cevap}
 
 Öğrenci Cevabı:
 {ogrenci_cevabi}
 
-Lütfen şunları yap:
-1. Öğrenci cevabının teknik doğruluğunu değerlendir
-2. Eksik veya yanlış noktaları belirle
-3. 0-100 arası bir puan ver
+Lütfen şu adımları izle:
+1. Öğrenci cevabında, ideal cevaba göre EKSİK olan anahtar noktaları tespit et.
+2. Öğrenci cevabında YANLIŞ bilgi varsa belirt.
+3. Öğrenci cevabının ne kadar kapsamlı olduğunu 0 ile 100 arasında puanla.
 
-Çıktını SADECE aşağıdaki JSON formatında ver, başka bir şey yazma:
-{{"puan": <0-100 arası sayı>, "yorum": "<kısa değerlendirme ve geri bildirim>"}}
+Çıktını SADECE aşağıdaki JSON formatında ver, başka hiçbir metin veya düşünce zinciri (<think>...</think>) ekleme:
+{{
+  "puan": <0-100 arası sayı>,
+  "eksik_kisimlar": ["Eksik nokta 1", "Eksik nokta 2"],
+  "yorum": "<Genel değerlendirme ve varsa yanlışlar>"
+}}
 """
-        
-        response = model.generate_content(prompt)
-        response_text = response.text.strip()
-        
-        # Parse JSON response
-        # Try to extract JSON from response
-        json_match = re.search(r'\{[^}]+\}', response_text)
-        if json_match:
-            result = json.loads(json_match.group())
-            llm_skoru = float(result.get('puan', 50))
-            yorum = result.get('yorum', 'Değerlendirme yapıldı.')
-        else:
-            # Fallback parsing
-            llm_skoru = 50.0
-            yorum = response_text[:500]
-        
-        # Clamp score to valid range
-        llm_skoru = max(0, min(100, llm_skoru))
-        
-        logger.info(f"Gemini analysis complete: score={llm_skoru}")
-        return {
-            'llm_skoru': llm_skoru,
-            'yorum': yorum
+
+        payload = {
+            "model": OLLAMA_MODEL,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": 0.1  # Low temperature for more deterministic/factual output
+            }
         }
+
+        logger.info(f"Sending request to Ollama ({OLLAMA_MODEL})...")
+        response = requests.post(OLLAMA_API_URL, json=payload, timeout=60)
         
-    except Exception as e:
-        logger.error(f"Gemini analysis failed: {e}")
+        if response.status_code != 200:
+            logger.error(f"Ollama API error: {response.text}")
+            return {'llm_skoru': 50.0, 'yorum': f"Ollama hatası: {response.status_code}"}
+            
+        response_data = response.json()
+        response_text = response_data.get("response", "")
+        
+        # Clean up <think> tags if DeepSeek includes them despite instructions
+        response_text = re.sub(r'<think>.*?</think>', '', response_text, flags=re.DOTALL).strip()
+        
+        # Try to parse JSON
+        try:
+            # Find JSON block using regex in case there is extra text
+            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            if json_match:
+                json_str = json_match.group()
+                result = json.loads(json_str)
+                
+                llm_skoru = float(result.get('puan', 50))
+                eksikler = result.get('eksik_kisimlar', [])
+                genel_yorum = result.get('yorum', '')
+                
+                # Format feedback
+                formatted_feedback = genel_yorum
+                if eksikler:
+                    formatted_feedback += "\n\nEksik Noktalar:\n" + "\n".join([f"- {e}" for e in eksikler])
+                    
+                logger.info(f"Ollama analysis complete: score={llm_skoru}")
+                return {
+                    'llm_skoru': max(0, min(100, llm_skoru)),
+                    'yorum': formatted_feedback
+                }
+            else:
+                logger.warning("Could not find JSON in Ollama response")
+                return {'llm_skoru': 50.0, 'yorum': response_text}
+                
+        except json.JSONDecodeError:
+            logger.error("Failed to decode JSON from Ollama")
+            return {'llm_skoru': 50.0, 'yorum': response_text}
+            
+    except requests.exceptions.ConnectionError:
+        logger.error("Could not connect to Ollama. Is it running?")
         return {
-            'llm_skoru': 50.0,
-            'yorum': f'Otomatik değerlendirme yapılamadı: {str(e)}'
+            'llm_skoru': 0.0,
+            'yorum': "Hata: Ollama servisine bağlanılamadı. Lütfen Ollama'nın çalıştığından emin olun (http://localhost:11434)."
+        }
+    except Exception as e:
+        logger.error(f"Ollama analysis failed: {e}")
+        return {
+            'llm_skoru': 0.0,
+            'yorum': f"Analiz hatası: {str(e)}"
         }
 
 
 def calculate_final_score(bert_skoru: float, llm_skoru: float) -> float:
     """
-    Calculate hybrid final score using the formula:
-    Final Puan = (BERTurk Benzerlik × 40) + (LLM Mantık Puanı × 0.6)
-    
-    Args:
-        bert_skoru: BERT similarity score (0-1)
-        llm_skoru: Gemini logic score (0-100)
-        
-    Returns:
-        Final score (0-100)
+    Calculate hybrid final score.
+    Now relying more on LLM for logic and BERT for semantic coverage.
     """
-    # Formula: (BERT × 40) + (LLM × 0.6)
-    # BERT contribution: 0-40 points
-    # LLM contribution: 0-60 points
+    # Formula: (BERT * 40%) + (LLM * 60%)
     bert_contribution = bert_skoru * 40
     llm_contribution = llm_skoru * 0.6
     
     final_puan = bert_contribution + llm_contribution
-    
-    # Clamp to 0-100 range
     final_puan = max(0, min(100, final_puan))
-    
-    logger.info(f"Final score: BERT({bert_skoru:.2f}×40={bert_contribution:.1f}) + LLM({llm_skoru:.1f}×0.6={llm_contribution:.1f}) = {final_puan:.1f}")
     
     return round(final_puan, 2)
 
@@ -121,38 +141,31 @@ def evaluate_answer(
     anahtar_kelimeler: str = ""
 ) -> dict:
     """
-    Complete evaluation pipeline combining BERT and Gemini.
-    
-    Args:
-        ideal_cevap: The ideal/expected answer
-        ogrenci_cevabi: The student's answer
-        soru_metni: Optional question text
-        anahtar_kelimeler: Optional comma-separated keywords
-        
-    Returns:
-        dict with bert_skoru, llm_skoru, final_puan, yorum
+    Complete evaluation pipeline: SBERT Similarity + Ollama Analysis
     """
     from similarity import calculate_bert_score, calculate_keyword_score
     
-    # Step 1: Calculate BERT similarity
+    # Step 1: Calculate BERT similarity (SBERT works offline)
     bert_skoru = calculate_bert_score(ideal_cevap, ogrenci_cevabi)
+    # Convert 0-1 score to 0-100 percentage for consistency in logs/thought
+    bert_percentage = bert_skoru * 100
     
-    # Step 2: Get Gemini analysis
-    gemini_result = analyze_with_gemini(ideal_cevap, ogrenci_cevabi, soru_metni)
-    llm_skoru = gemini_result['llm_skoru']
-    yorum = gemini_result['yorum']
+    # Step 2: Get Ollama analysis (Logic & Missing parts)
+    ollama_result = analyze_with_ollama(ideal_cevap, ogrenci_cevabi, soru_metni)
+    llm_skoru = ollama_result['llm_skoru']
+    yorum = ollama_result['yorum']
     
     # Step 3: Calculate final score
-    final_puan = calculate_final_score(bert_skoru, llm_skoru)
+    final_puan = calculate_final_score(bert_percentage, llm_skoru)
     
-    # Optional: Add keyword bonus info to comment
+    # Optional: Add keyword info
     if anahtar_kelimeler:
         keyword_score = calculate_keyword_score(anahtar_kelimeler, ogrenci_cevabi)
         if keyword_score < 0.5:
-            yorum += f" (Anahtar kelime eşleşmesi: %{int(keyword_score*100)})"
+             yorum += f"\n\n(Not: Anahtar kelime eşleşmesi düşük: %{int(keyword_score*100)})"
     
     return {
-        'bert_skoru': round(bert_skoru, 4),
+        'bert_skoru': round(bert_skoru, 4),  # Keep as 0-1 for frontend display consistency if needed, or update frontend
         'llm_skoru': round(llm_skoru, 2),
         'final_puan': final_puan,
         'yorum': yorum
