@@ -1,106 +1,96 @@
 # 📝 Açık Uçlu Sınav Değerlendirme Sistemi (Automated Handwriting Assessment)
 
-Bu proje, el yazısı ile yazılmış sınav kağıtlarını yapay zeka destekli olarak okuyan (OCR), analiz eden ve puanlayan tam kapsamlı bir değerlendirme sistemidir.
-
-Proje, **Hibrit Puanlama Mimarisi** kullanarak öğrenci cevaplarını hem anlamsal (Semantic) hem de mantıksal (Logical) açıdan değerlendirir.
+Bu proje, el yazısı sınav kağıtlarını yapay zeka ile okuyan (OCR), anlamsal (SBERT) ve mantıksal (LLM-Ollama) olarak analiz edip puanlayan bir sistemdir.
 
 ---
 
-## 🚀 Öne Çıkan Özellikler
-
-### 1. Akıllı OCR ve Soru Ayrıştırma (Google Gemini Vision)
-- **El Yazısı Tanıma:** Google Gemini Vision API kullanılarak el yazısı metne dökülür.
-- **Çoklu Soru Tespiti:** Tek bir sınav kağıdında birden fazla soru varsa (örn: Soru 1, Soru 2...), sistem bunları otomatik algılar ve ayrı kartlar halinde listeler.
-- **Regex Ayrıştırma:** Gemini'nin çıktısı saf JSON olmasa bile, Python regex katmanı ile veriler güvenli bir şekilde ayrıştırılır.
-- **Hata Yönetimi:** API kota aşımlarında (429 Error) otomatik bekleme ve tekrar deneme mekanizması vardır.
-
-### 2. Hibrit Puanlama Sistemi (Offline & Secure)
-Sistem iki farklı yapay zeka modelinin gücünü birleştirir:
-
-*   **SBERT (Sentence-BERT):** `paraphrase-multilingual-MiniLM-L12-v2` modeli ile öğrenci cevabı ve ideal cevap arasındaki **anlamsal benzerliği** ölçer. Kelime avcılığı yapmaz, anlamı yakalar.
-*   **Ollama (DeepSeek-R1:8b):** Yerel (Local) olarak çalışan büyük dil modeli, cevabın **mantıksal doğruluğunu** kontrol eder. "Eksik bilgi" ve "Yanlış bilgi" analizi yapar.
-
-#### 🛡️ Puanlama Mantığı (Logic Gate)
-Yanlış cevapların "benzer kelimeler" yüzünden yüksek puan almasını engellemek için özel bir algoritma kullanılır:
-- Eğer Ollama, cevabın **YANLIŞ** (Puan < 40) olduğuna karar verirse, SBERT skoru **devre dışı bırakılır**.
-- **Formül:** `Final = (SBERT * %40) + (Ollama * %60)` (Sadece cevap doğruysa geçerli).
-
-### 3. Modern Kullanıcı Arayüzü (Frontend)
-- **Teknolojiler:** React, Tailwind CSS, Lucide Icons.
-- **Görsel Geri Bildirim:**
-    - Puanı 40'ın altında olan cevaplar **Kırmızı Kart** ile uyarılır.
-    - Başarılı cevaplar **Yeşil Kart** ile gösterilir.
-- **Düzenlenebilir Yapı:** OCR hatası durumunda öğretmen, "Öğrenci Cevabı"nı manuel düzeltebilir.
+## 🚀 Özellikler
+- **Çoklu Soru Ayıklama:** Tek sayfada birden fazla soru varsa otomatik ayırır.
+- **Hibrit Puanlama (Offline):** Anlamsal benzerlik (%40) + Mantıksal doğruluk (%60).
+- **Akıllı Hata Yönetimi:** Yanlış cevapları tespit edip puanı düşürür.
+- **Güvenli:** Puanlama işlemi tamamen bilgisayarınızda (Local) yapılır.
 
 ---
 
-## 🛠️ Teknoloji Yığını (Tech Stack)
+## 🛠️ Gereksinimler
 
-| Bileşen | Teknoloji | Açıklama |
-|---|---|---|
-| **Backend** | FastApi (Python) | REST API, Asenkron mimari |
-| **Veritabanı** | SQLite + SQLAlchemy | Soru ve sonuçların saklanması |
-| **OCR** | Google Gemini Vision | Görüntü işleme ve metin çıkarma |
-| **NLP (Lokal)** | SBERT (Sentence-Transformers) | Anlamsal benzerlik ölçümü |
-| **LLM (Lokal)** | Ollama + DeepSeek-R1:8b | Mantıksal analiz ve geri bildirim |
-| **Frontend** | React + Vite | Kullanıcı arayüzü |
+Projenin çalışması için bilgisayarınızda şunlar kurulu olmalıdır:
+
+1.  **Python** (3.10 veya üzeri)
+2.  **Node.js** (Frontend için)
+3.  **Ollama** (Lokal LLM için - [İndir](https://ollama.com))
+
+### � Backend Bağımlılıkları (`backend/requirements.txt`)
+Aşağıdaki kütüphaneler kurulum sırasında otomatik yüklenir:
+- `fastapi`, `uvicorn`: API Sunucusu
+- `sqlalchemy`: Veritabanı
+- `sentence-transformers`, `torch`, `numpy`: SBERT Modeli
+- `google-generativeai`: Gemini OCR
+- `requests`: Ollama ile iletişim
+- `pdf2image`, `pytesseract`, `pillow`: PDF ve resim işleme
+- `python-multipart`, `python-dotenv`: Yardımcı araçlar
 
 ---
 
-## ⚙️ Kurulum ve Çalıştırma
+## ⚙️ Kurulum Adımları (Sıfırdan)
 
-### Gereksinimler
-1.  **Python 3.10+**
-2.  **Node.js & npm**
-3.  **Ollama:** Bilgisayarınızda kurulu olmalı.
-    - İndir: [ollama.com](https://ollama.com)
-    - Model: `ollama pull deepseek-r1:8b` (Otomatik başlangıç scripti bunu kontrol eder).
+Sistemi kurmak için aşağıdaki adımları sırasıyla uygulayın:
 
-### Adım 1: Kurulum
-Projeyi klonlayın ve kök dizinde kalın.
+### 1. Kurulum Scriptini Çalıştırın
+Proje klasöründeki **`0_setup_project.bat`** dosyasına çift tıklayın.
 
-### Adım 2: API Anahtarı
-`backend/.env` dosyası veya `ocr_utils.py` içinde Google Gemini API anahtarının tanımlı olduğundan emin olun.
+Bu script şunları otomatik yapar:
+1.  Python sanal ortamı (`.venv`) oluşturur.
+2.  `backend/requirements.txt` içindeki tüm kütüphaneleri yükler.
+3.  `frontend` klasörüne gidip `npm install` komutuyla React paketlerini yükler.
 
-### Adım 3: Başlatma
-Tek bir komutla tüm sistemi (Backend, Frontend ve Ollama) başlatabilirsiniz:
-
+*(Alternatif Manuel Kurulum):*
 ```bash
-start_project.bat
+# Backend
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r backend/requirements.txt
+
+# Frontend
+cd frontend
+npm install
 ```
+
+### 2. Ollama Modelini İndirin
+Sistemin puanlama yapabilmesi için `deepseek-r1:8b` modeline ihtiyacı vardır. Terminalde (CMD) şu komutu çalıştırın:
+```bash
+ollama pull deepseek-r1:8b
+```
+*(Not: `start_project.bat` bunu otomatik yapmaya çalışır ancak ilk kurulumda manuel yapmanız önerilir, yaklaşık 4.7 GB veri iner.)*
+
+### 3. API Anahtarını Kontrol Edin
+Verdiğiniz Google Gemini API anahtarı `backend/ocr_utils.py` dosyasına gömülüdür. Değiştirmek isterseniz `backend/.env` dosyası oluşturup içine yazabilirsiniz:
+```
+GOOGLE_API_KEY=AIza..........
+```
+
+---
+
+## ▶️ Başlatma
+
+Sistemi kullanıma hazır hale getirmek için **`start_project.bat`** dosyasına çift tıklamanız yeterlidir.
 
 Bu script:
-1.  Gerekli Python kütüphanelerini yükler.
-2.  Ollama servisinin çalışıp çalışmadığını kontrol eder, çalışmıyorsa başlatır.
-3.  `deepseek-r1:8b` modelinin varlığını kontrol eder, yoksa indirir.
-4.  Backend sunucusunu (Port 8000) başlatır.
-5.  Frontend sunucusunu (Port 5173) başlatır.
+1.  **Ollama** servisini kontrol eder, kapalıysa başlatır.
+2.  **Backend** sunucusunu açar: `http://127.0.0.1:8000`
+3.  **Frontend** uygulamasını açar: `http://localhost:5173`
+
+Tarayıcınız otomatik açılacaktır. PDF veya resim yükleyerek test etmeye başlayabilirsiniz.
 
 ---
 
-## 📂 Proje Yapısı
+## ⚠️ Sık Karşılaşılan Sorunlar
 
-```
-open-ended-exam-assessment/
-├── backend/
-│   ├── main.py            # API Endpointleri
-│   ├── ocr_utils.py       # Gemini OCR ve Regex işlemleri
-│   ├── scoring.py         # Hibrit Puanlama (SBERT + Ollama)
-│   ├── similarity.py      # SBERT Motoru
-│   ├── database.py        # Veritabanı bağlantısı
-│   └── models.py          # Veritabanı tabloları
-├── frontend/
-│   ├── src/
-│   │   ├── App.jsx        # Ana Arayüz (Upload & Sonuçlar)
-│   │   └── index.css      # Tailwind stilleri
-│   └── package.json
-├── start_project.bat      # Tek tıkla başlatma scripti
-└── requirements.txt       # Python bağımlılıkları (FastAPI, torch, vb.)
-```
+**"Read timed out" Hatası:**
+- Bilgisayarınız yavaşsa Ollama'nın cevap vermesi uzun sürebilir. Sistem **5 dakika** bekleyecek şekilde ayarlanmıştır. Sabırlı olun.
 
-## ⚠️ Notlar
-- **Offline Çalışma:** Puanlama aşaması (SBERT ve Ollama) tamamen bilgisayarınızda (offline) çalışır. Verileriniz dışarı gitmez.
-- **Sadece OCR Online:** Sadece kağıt okuma işlemi için Google sunucularına gidilir.
+**"Tek soru çıktı" Hatası:**
+- Kağıttaki yazı çok karışıksa veya sorular birbirine girmişse OCR tek blok olarak alabilir.
 
----
-**Geliştirici:** Enes Çelik (Antigravity Agent desteğiyle)
+**"Quota exceeded" (429) Hatası:**
+- Google Gemini ücretsiz kotası dolmuş olabilir. Sistem otomatik olarak 5-10 saniye bekleyip tekrar dener. Hatayı sık alırsanız API anahtarını değiştirin.
