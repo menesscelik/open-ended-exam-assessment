@@ -9,15 +9,21 @@ import logging
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-# Load environment variables
+# Determine current directory
 current_dir = os.path.dirname(os.path.abspath(__file__))
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Configure Gemini with hardcoded API key
-api_key = "AIzaSyDUUTqpZlVuJmHXI0AqCO2ymNIzpxl__iQ"
+# Load environment variables from .env file
+load_dotenv(os.path.join(current_dir, '.env'))
+
+# Configure Gemini with API key from environment
+api_key = os.getenv("GOOGLE_API_KEY")
+if not api_key:
+    logger.error("GOOGLE_API_KEY not found in environment variables!")
+    
 genai.configure(api_key=api_key)
 
 def get_gemini_model():
