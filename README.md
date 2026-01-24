@@ -1,14 +1,24 @@
-# 📝 Açık Uçlu Sınav Değerlendirme Sistemi (Automated Handwriting Assessment)
+# 📝 Akademik Sınav Değerlendirme Sistemi (3 Aşamalı Akıllı Sistem)
 
-Bu proje, el yazısı sınav kağıtlarını yapay zeka ile okuyan (OCR), anlamsal (SBERT) ve mantıksal (LLM-Ollama) olarak analiz edip puanlayan bir sistemdir.
+Bu proje, açık uçlu sınav kağıtlarını akademik standartlarda değerlendiren yeni nesil bir yapay zeka sistemidir. Sistem, **Cevap Anahtarı** ve **Rubrik** belgelerini referans alarak öğrenci kağıtlarını okur (OCR) ve kriter bazlı puanlama yapar.
 
 ---
 
-## 🚀 Özellikler
-- **Çoklu Soru Ayıklama:** Tek sayfada birden fazla soru varsa otomatik ayırır.
-- **Hibrit Puanlama (Offline):** Anlamsal benzerlik (%40) + Mantıksal doğruluk (%60).
-- **Akıllı Hata Yönetimi:** Yanlış cevapları tespit edip puanı düşürür.
-- **Güvenli:** Puanlama işlemi tamamen bilgisayarınızda (Local) yapılır.
+## 🚀 Yeni Özellikler (v2.0)
+
+- **3 Aşamalı Akış:**
+  1.  **Cevap Anahtarı Yükleme:** Sınavın doğru cevaplarını içeren PDF.
+  2.  **Rubrik Yükleme:** Puanlama kriterlerini ve kurallarını içeren PDF.
+  3.  **Öğrenci Kağıdı:** Sistemin değerlendireceği sınav kağıdı.
+  
+- **Rubrik Tabanlı Puanlama:**
+  - Yapay zeka, öğrenci cevabını rubrikteki her kriter için (Kavramsal Doğruluk, Mantık, Terminoloji vb.) ayrı ayrı analiz eder.
+  - SBERT (Semantik Benzerlik), karar verici değil **yardımcı sinyal** olarak kullanılır.
+  - "Doğru ama eksik", "Kısmen doğru" gibi nüansları akademisyen hassasiyetiyle yakalar.
+
+- **Detaylı Geri Bildirim:**
+  - Puanın neden kırıldığına dair kriter bazlı açıklama.
+  - "TAM", "KISMEN" veya "YOK" şeklinde kriter durumu.
 
 ---
 
@@ -20,77 +30,51 @@ Projenin çalışması için bilgisayarınızda şunlar kurulu olmalıdır:
 2.  **Node.js** (Frontend için)
 3.  **Ollama** (Lokal LLM için - [İndir](https://ollama.com))
 
-### � Backend Bağımlılıkları (`backend/requirements.txt`)
-Aşağıdaki kütüphaneler kurulum sırasında otomatik yüklenir:
+### 📦 Backend Bağımlılıkları (`backend/requirements.txt`)
 - `fastapi`, `uvicorn`: API Sunucusu
 - `sqlalchemy`: Veritabanı
-- `sentence-transformers`, `torch`, `numpy`: SBERT Modeli
-- `google-generativeai`: Gemini OCR
+- `sentence-transformers`: SBERT Modeli (Semantik Analiz)
+- `google-genai`: Gemini 2.0 Vision OCR (Metin Okuma)
 - `requests`: Ollama ile iletişim
-- `pdf2image`, `pytesseract`, `pillow`: PDF ve resim işleme
-- `python-multipart`, `python-dotenv`: Yardımcı araçlar
+- `pdf2image`, `pillow`: PDF işleme
 
 ---
 
-## ⚙️ Kurulum Adımları (Sıfırdan)
+## ⚙️ Kurulum ve Başlatma
 
-Sistemi kurmak için aşağıdaki adımları sırasıyla uygulayın:
+### 1. Kurulum (İlk Sefer)
+Proje klasöründeki **`0_setup_project.bat`** dosyasına çift tıklayın. Bu işlem Python ortamını kurar ve gerekli kütüphaneleri yükler.
 
-### 1. Kurulum Scriptini Çalıştırın
-Proje klasöründeki **`0_setup_project.bat`** dosyasına çift tıklayın.
-
-Bu script şunları otomatik yapar:
-1.  Python sanal ortamı (`.venv`) oluşturur.
-2.  `backend/requirements.txt` içindeki tüm kütüphaneleri yükler.
-3.  `frontend` klasörüne gidip `npm install` komutuyla React paketlerini yükler.
-
-*(Alternatif Manuel Kurulum):*
+### 2. Yapay Zeka Modelini İndirin
+Terminalde (CMD) şu komutu çalıştırın (yaklaşık 9GB):
 ```bash
-# Backend
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r backend/requirements.txt
-
-# Frontend
-cd frontend
-npm install
+ollama pull deepseek-r1:14b
 ```
 
-### 2. Ollama Modelini İndirin
-Sistemin puanlama yapabilmesi için `deepseek-r1:8b` modeline ihtiyacı vardır. Terminalde (CMD) şu komutu çalıştırın:
-```bash
-ollama pull deepseek-r1:8b
-```
-*(Not: `start_project.bat` bunu otomatik yapmaya çalışır ancak ilk kurulumda manuel yapmanız önerilir, yaklaşık 4.7 GB veri iner.)*
-
-### 3. API Anahtarını Kontrol Edin
-Verdiğiniz Google Gemini API anahtarı `backend/ocr_utils.py` dosyasına gömülüdür. Değiştirmek isterseniz `backend/.env` dosyası oluşturup içine yazabilirsiniz:
-```
-GOOGLE_API_KEY=AIza..........
-```
+### 3. Sistemi Başlatın
+**`start_project.bat`** dosyasına çift tıklayın. Sistem otomatik olarak:
+- Backend Sunucusunu (http://127.0.0.1:8000)
+- Frontend Arayüzünü (http://localhost:5173) başlatacaktır.
 
 ---
 
-## ▶️ Başlatma
+## 🖥️ Kullanım Rehberi
 
-Sistemi kullanıma hazır hale getirmek için **`start_project.bat`** dosyasına çift tıklamanız yeterlidir.
+Sistem açıldığında sizi 3 adımlı bir süreç karşılayacaktır:
 
-Bu script:
-1.  **Ollama** servisini kontrol eder, kapalıysa başlatır.
-2.  **Backend** sunucusunu açar: `http://127.0.0.1:8000`
-3.  **Frontend** uygulamasını açar: `http://localhost:5173`
-
-Tarayıcınız otomatik açılacaktır. PDF veya resim yükleyerek test etmeye başlayabilirsiniz.
+1.  **Adım 1: Cevap Anahtarı**
+    - Sınavın doğru cevaplarını içeren PDF dosyasını yükleyin. Yapay zeka metni çıkaracaktır.
+    
+2.  **Adım 2: Rubrik (Değerlendirme Kriterleri)**
+    - Hangi cevabın kaç puan olduğunu ve kriterleri (Örn: "İşlem basamağı 5 puan") içeren belgeyi yükleyin.
+    
+3.  **Adım 3: Öğrenci Kağıdı**
+    - Puanlanacak öğrenci kağıdını yükleyin. Sistem OCR ile okuyacak, ardından **"Puanlamayı Başlat"** butonuna bastığınızda Adım 1 ve 2'deki verileri kullanarak detaylı bir rapor sunacaktır.
 
 ---
 
-## ⚠️ Sık Karşılaşılan Sorunlar
+## ⚠️ Önemli Notlar
 
-**"Read timed out" Hatası:**
-- Bilgisayarınız yavaşsa Ollama'nın cevap vermesi uzun sürebilir. Sistem **5 dakika** bekleyecek şekilde ayarlanmıştır. Sabırlı olun.
-
-**"Tek soru çıktı" Hatası:**
-- Kağıttaki yazı çok karışıksa veya sorular birbirine girmişse OCR tek blok olarak alabilir.
-
-**"Quota exceeded" (429) Hatası:**
-- Google Gemini ücretsiz kotası dolmuş olabilir. Sistem otomatik olarak 5-10 saniye bekleyip tekrar dener. Hatayı sık alırsanız API anahtarını değiştirin.
+- **Google API Kotası:** Sistem OCR için Google Gemini kullanır. "429 Too Many Requests" hatası alırsanız 1-2 dakika bekleyin.
+- **Ollama Performansı:** Puanlama işlemi bilgisayarınızın hızına bağlı olarak soru başına 10-30 saniye sürebilir.
+- **Poppler:** PDF okuma aracı (Poppler) projenin içine gömülmüştür, ekstra kuruluma gerek yoktur.

@@ -1,4 +1,5 @@
 @echo off
+set "PATH=%PATH%;C:\Program Files\nodejs;C:\Users\menes\AppData\Local\Programs\Ollama;c:\Users\menes\AppData\Local\Programs\Python\Python311;c:\Users\menes\AppData\Local\Programs\Python\Python311\Scripts"
 echo ===================================================
 echo Acik Uclu Sinav Degerlendirme Sistemi Baslatiliyor...
 echo ===================================================
@@ -15,11 +16,11 @@ if %errorlevel% neq 0 (
 )
 
 :: 2. Model Kontrolu (deepseek-r1:8b)
-echo [2/3] Ollama modeli (deepseek-r1:8b) kontrol ediliyor...
-ollama list | find "deepseek-r1:8b" >nul
+echo [2/3] Ollama modeli (deepseek-r1:14b) kontrol ediliyor...
+ollama list | find "deepseek-r1:14b" >nul
 if %errorlevel% neq 0 (
-    echo Model bulunamadi, indiriliyor (Bu islem internet hizina gore surebilir)...
-    ollama pull deepseek-r1:8b
+    echo Model bulunamadi, indiriliyor ^(Bu islem internet hizina gore surebilir^)...
+    ollama pull deepseek-r1:14b
 ) else (
     echo Model hazir.
 )
@@ -35,11 +36,11 @@ if not exist ".venv" (
 call .venv\Scripts\activate
 
 :: Backend'i arka planda baslat
-start "Backend API" cmd /k "uvicorn backend.main:app --reload --port 8000"
+start "Backend API" cmd /k "cd backend && uvicorn main:app --reload --port 8000"
 
 :: 4. Frontend Baslatma
 cd frontend
-start "Frontend UI" cmd /k "npm run dev"
+start "Frontend UI" cmd /k "npm.cmd run dev"
 
 echo.
 echo Islem tamam! Tarayiciniz acilmazsa su adresleri kullanin:

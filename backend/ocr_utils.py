@@ -6,8 +6,9 @@ Provides Google Gemini-based text extraction with Turkish language support
 from PIL import Image
 import os
 import logging
-import google.generativeai as genai
+from google import genai
 from dotenv import load_dotenv
+import json
 
 # Determine current directory
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -23,12 +24,10 @@ load_dotenv(os.path.join(current_dir, '.env'))
 api_key = os.getenv("GOOGLE_API_KEY")
 if not api_key:
     logger.error("GOOGLE_API_KEY not found in environment variables!")
-    
-genai.configure(api_key=api_key)
 
-def get_gemini_model():
-    """Returns the configured Gemini model instance."""
-    return genai.GenerativeModel('gemini-flash-latest')
+def get_gemini_client():
+    """Returns the configured Gemini client."""
+    return genai.Client(api_key=api_key)
 
 def extract_text_from_image(image: Image.Image, prompt: str = None) -> str:
     """
@@ -42,7 +41,7 @@ def extract_text_from_image(image: Image.Image, prompt: str = None) -> str:
         Structured list of questions/answers or raw text string
     """
     try:
-        model = get_gemini_model()
+        client = get_gemini_client()
         
         if prompt is None:
             # Updated prompt for structured extraction
@@ -59,7 +58,10 @@ def extract_text_from_image(image: Image.Image, prompt: str = None) -> str:
                 "- Cevap yoksa boş string ver."
             )
             
-        response = model.generate_content([prompt, image])
+        response = client.models.generate_content(
+            model='gemini-flash-latest',
+            contents=[prompt, image]
+        )
         text = response.text
         
         # Try to parse JSON output
@@ -69,7 +71,6 @@ def extract_text_from_image(image: Image.Image, prompt: str = None) -> str:
         elif cleaned_text.startswith('```'):
             cleaned_text = cleaned_text[3:-3].strip()
             
-        import json
         try:
             structured_data = json.loads(cleaned_text)
             logger.info("Gemini returned valid structured JSON")
@@ -98,7 +99,7 @@ def normalize_text(text: str) -> str:
     
     return text
 
-def process_image_ocr(image: Image.Image, debug_dir: str = None) -> dict:
+def process_image_ocr(image: Image.Image, debug_dir: str = None, prompt: str = None) -> dict:
     """
     Complete OCR processing pipeline using Gemini.
     Can return either structured JSON (list) or raw text compatibility object.
@@ -114,7 +115,7 @@ def process_image_ocr(image: Image.Image, debug_dir: str = None) -> dict:
             'status': 'in_progress'
         })
         
-        result = extract_text_from_image(image)
+        result = extract_text_from_image(image, prompt=prompt)
         
         processing_steps[0]['status'] = 'completed'
         processing_steps[0]['result'] = 'Veri başarıyla alındı'

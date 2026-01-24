@@ -4,7 +4,7 @@ python-multipart
 pdf2image
 pytesseract
 pillow
-google-generativeai
+google-genai
 python-dotenv
 sqlalchemy
 sentence-transformers

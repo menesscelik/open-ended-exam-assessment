@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pdf2image import convert_from_bytes
 from PIL import Image
@@ -36,9 +36,18 @@ def startup_event():
     init_db()
 
 # Poppler yolu (Windows için PDF işleme)
-POPPLER_PATH = r'C:\Program Files\poppler\Library\bin'  
-if not os.path.exists(POPPLER_PATH):
-    POPPLER_PATH = r'C:\Program Files\poppler\bin'
+# Poppler yolu (Windows için PDF işleme)
+# Öncelik 1: Proje içi lokal kurulum
+base_dir = os.path.dirname(os.path.abspath(__file__))
+local_poppler = os.path.join(base_dir, 'bin', 'poppler-24.02.0', 'Library', 'bin')
+
+if os.path.exists(local_poppler):
+    POPPLER_PATH = local_poppler
+else:
+    # Öncelik 2: Sistem geneli kurulumlar
+    POPPLER_PATH = r'C:\Program Files\poppler\Library\bin'  
+    if not os.path.exists(POPPLER_PATH):
+        POPPLER_PATH = r'C:\Program Files\poppler\bin'
 
 @app.get("/")
 async def root():
@@ -133,9 +142,11 @@ def get_ogrenci_sonuclari(
 
 @app.post("/api/puanla-direkt")
 def puanla_direkt(
-    ideal_cevap: str,
-    ogrenci_cevabi: str,
-    soru_metni: str = ""
+    ideal_cevap: str = Body(..., embed=True),
+    ogrenci_cevabi: str = Body(..., embed=True),
+    soru_metni: str = Body("", embed=True),
+    answer_key_text: str = Body(None, embed=True),
+    rubric_text: str = Body(None, embed=True)
 ):
     """
     Doğrudan puanlama - veritabanı gerektirmez.
@@ -143,15 +154,18 @@ def puanla_direkt(
     """
     from scoring import evaluate_answer
     
-    if not ideal_cevap or not ogrenci_cevabi:
-        raise HTTPException(status_code=400, detail="İdeal cevap ve öğrenci cevabı gerekli.")
+    if not ideal_cevap and not answer_key_text:
+        # We need at least one source of truth
+        raise HTTPException(status_code=400, detail="İdeal cevap veya Cevap Anahtarı gerekli.")
     
     # Perform evaluation
     result = evaluate_answer(
         ideal_cevap=ideal_cevap,
         ogrenci_cevabi=ogrenci_cevabi,
         soru_metni=soru_metni,
-        anahtar_kelimeler=""
+        anahtar_kelimeler="",
+        answer_key_text=answer_key_text,
+        rubric_text=rubric_text
     )
     
     return {
@@ -165,10 +179,12 @@ def puanla_direkt(
 
 @app.post("/api/puanla")
 def puanla_cevap(
-    sinav_id: str,
-    soru_no: int,
-    ogrenci_id: str,
-    ogrenci_cevabi: str,
+    sinav_id: str = Body(..., embed=True),
+    soru_no: int = Body(..., embed=True),
+    ogrenci_id: str = Body(..., embed=True),
+    ogrenci_cevabi: str = Body(..., embed=True),
+    answer_key_text: str = Body(None, embed=True),
+    rubric_text: str = Body(None, embed=True),
     db: Session = Depends(get_db)
 ):
     """
@@ -184,15 +200,23 @@ def puanla_cevap(
         SinavSorulari.soru_no == soru_no
     ).first()
     
-    if not soru:
+    if not soru and not answer_key_text:
+         # If allowing generic scoring without DB question, remove this check or adapt. 
+         # But this endpoint is specifically for DB questions.
         raise HTTPException(status_code=404, detail=f"Soru bulunamadı. sinav_id='{sinav_id}', soru_no={soru_no}")
+    
+    ideal_cevap = soru.ideal_cevap if soru else ""
+    soru_metni_db = soru.soru_metni if soru else ""
+    anahtar_kelimeler = soru.anahtar_kelimeler or ""
     
     # Perform evaluation
     result = evaluate_answer(
-        ideal_cevap=soru.ideal_cevap,
+        ideal_cevap=ideal_cevap,
         ogrenci_cevabi=ogrenci_cevabi,
-        soru_metni=soru.soru_metni,
-        anahtar_kelimeler=soru.anahtar_kelimeler or ""
+        soru_metni=soru_metni_db,
+        anahtar_kelimeler=anahtar_kelimeler,
+        answer_key_text=answer_key_text,
+        rubric_text=rubric_text
     )
     
     # Save result to database
@@ -221,6 +245,63 @@ def puanla_cevap(
 
 
 # ==================== OCR UPLOAD ====================
+
+
+# ==================== OCR UPLOAD ====================
+
+@app.post("/upload-generic")
+async def upload_generic_pdf(file: UploadFile = File(...)):
+    """
+    Endpoint for uploading Answer Key or Rubric files.
+    Performs OCR with a 'Full Text' focused prompt to get the global context.
+    Returns the combined text from all pages.
+    """
+    try:
+        contents = await file.read()
+        request_id = str(uuid.uuid4())
+        
+        # Determine if file is PDF or image
+        images = []
+        if file.filename.lower().endswith('.pdf'):
+            if os.path.exists(POPPLER_PATH):
+                images = convert_from_bytes(contents, poppler_path=POPPLER_PATH, dpi=300)
+            else:
+                images = convert_from_bytes(contents, dpi=300)
+        else:
+            try:
+                image = Image.open(io.BytesIO(contents))
+                images = [image]
+            except Exception as e:
+                raise HTTPException(status_code=400, detail="Desteklenmeyen dosya formatı.")
+        
+        extracted_text_parts = []
+        
+        # Prompt explicitly for full text extraction without JSON formatting
+        generic_prompt = "Bu belgedeki tüm metni olduğu gibi, satır satır dışarı aktar. Başlıkları ve yapıyı korumaya çalış. JSON formatı kullanma, sadece saf metin ver."
+
+        for i, image in enumerate(images):
+            try:
+                ocr_result = process_image_ocr(image, prompt=generic_prompt)
+                
+                # We expect 'raw_text' or 'normalized_text'
+                text_content = ocr_result.get('raw_text') or ocr_result.get('normalized_text', '')
+                extracted_text_parts.append(text_content)
+                
+            except Exception as ocr_error:
+                print(f"Page {i+1} error: {ocr_error}")
+                extracted_text_parts.append("")
+        
+        full_text = "\n\n".join(extracted_text_parts)
+        
+        return {
+            "success": True,
+            "filename": file.filename,
+            "text": full_text
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Dosya işlenirken hata: {str(e)}")
+
 
 @app.post("/upload")
 async def upload_pdf(file: UploadFile = File(...)):
@@ -310,3 +391,4 @@ async def upload_pdf(file: UploadFile = File(...)):
             status_code=500,
             detail=f"Dosya işlenirken bir hata oluştu: {str(e)}"
         )
+

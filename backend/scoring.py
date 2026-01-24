@@ -7,52 +7,91 @@ import logging
 import json
 import re
 import requests
-import json
 
 logger = logging.getLogger(__name__)
 
 # Ollama Configuration
 OLLAMA_API_URL = "http://127.0.0.1:11434/api/generate"
 # Using deepseek-r1:8b as requested/available
-OLLAMA_MODEL = "deepseek-r1:8b"
+OLLAMA_MODEL = "deepseek-r1:14b"
 
 
-def analyze_with_ollama(ideal_cevap: str, ogrenci_cevabi: str, soru_metni: str = "") -> dict:
+def analyze_with_ollama(ideal_cevap: str, ogrenci_cevabi: str, soru_metni: str = "", answer_key_text: str = None, rubric_text: str = None, bert_score: float = 0.0) -> dict:
     """
     Analyze student answer using local Ollama model (DeepSeek R1).
-    
-    Args:
-        ideal_cevap: The ideal/expected answer
-        ogrenci_cevabi: The student's answer
-        soru_metni: Optional question text for context
-        
-    Returns:
-        dict with 'llm_skoru' (0-100) and 'yorum' (feedback text)
     """
     try:
-        prompt = f"""Sen deneyimli bir öğretmensin. Görevin öğrencinin cevabını İÇERİK ve ANLAM açısından değerlendirmektir.
-        
-{'Soru: ' + soru_metni if soru_metni else ''}
+        # Determine sources
+        source_key = f"""
+    1) CEVAP ANAHTARI (ANSWER_KEY_TEXT):
+    {answer_key_text if answer_key_text else ideal_cevap}
+    (Bu metin, değerlendirmede birincil doğruluk kaynağıdır.)"""
 
-İdeal Cevap (Referans):
-{ideal_cevap}
+        source_rubric = f"""
+    2) RUBRİK (RUBRIC_TEXT):
+    {rubric_text if rubric_text else '''
+    - Kavramsal Doğruluk (40 Puan): Cevap, anahtar kelimeleri ve temel kavramları içeriyor mu?
+    - Mantıksal Tutarlılık (30 Puan): İfadeler kendi içinde tutarlı ve soruyla alakalı mı?
+    - Kapsam ve Detay (20 Puan): Cevap anahtarındaki kritik noktaların tamamına değinilmiş mi?
+    - Terminoloji ve İfade (10 Puan): Akademik dil ve doğru terminoloji kullanılmış mı?
+    '''}"""
 
-Öğrenci Cevabı:
-{ogrenci_cevabi}
+        prompt = f"""ROL TANIMI:
+    Sen, açık uçlu sınav cevaplarını rubrik tabanlı ve anlamsal değerlendiren akademik bir yapay zeka sistemisin.
 
-DEĞERLENDİRME KURALLARI (Çok Önemli - DİKKAT):
-1. ÖNCELİKLE DOĞRULUK KONTROLÜ YAP: Öğrenci cevabı yanlış bilgi, gerçek dışı iddia veya ideal cevapla ÇELİŞEN bilgi içeriyorsa DÜŞÜK PUAN (0-30 arası) ver.
-2. ANLAM EŞLEŞMESİ: Sadece bilgi DOĞRU ise anlam benzerliğine bak. Farklı cümlelerle doğruyu söylüyorsa tam puan ver.
-3. Yanlış cevapları asla "benzer" diye kabul etme. (Örn: "Güneş batıdan doğar" ile "Güneş doğudan doğar" anlamsal olarak benzerdir ama bilgi YANLIŞTIR. Puanı 0 olmalı.)
-4. "Eksik" ile "Yanlış"ı ayır. Eksik bilgi puan kırar, Yanlış bilgi puanı sıfırlar veya çok düşürür.
+    SİSTEM ÇALIŞMA PRENSİBİ:
+    - Rubrik, puan dağılımını ve değerlendirme kriterlerini tanımlar.
+    - Semantik analiz (SBERT + Sen), her rubrik kriterinin öğrenci cevabında anlamsal olarak karşılanıp karşılanmadığını belirler.
+    - SBERT bağımsız bir puan değildir, sadece yardımcı bir araçtır.
 
-Çıktını SADECE aşağıdaki JSON formatında ver:
-{{
-  "puan": <0-100 arası sayı>,
-  "eksik_kisimlar": ["Eksik bilgi 1", "Yanlış bilgi: ..."],
-  "yorum": "<Önce cevabın doğru/yanlış olduğunu belirten, sonra eksikleri söyleyen net yorum>"
-}}
-"""
+    DEĞERLENDİRME KAYNAKLARI:
+    {source_key}
+    {source_rubric}
+
+    EK SİNYALLER:
+    - Hesaplanan SBERT Benzerlik Skoru: %{bert_score:.1f}
+      (Bu skor, öğrenci cevabının cevap anahtarına genel kelime benzerliğini gösterir. Düşükse bile anlam eşdeğer olabilir, dikkatli ol.)
+
+    ÖĞRENCİ CEVABI:
+    {ogrenci_cevabi}
+
+    SORU BAĞLAMI:
+    {soru_metni if soru_metni else 'Belirtilmedi'}
+
+    DEĞERLENDİRME ADIMLARI (ZORUNLU):
+    1. Rubrikte yer alan her kriteri ayrı ayrı ele al.
+    2. Her kriter için sor: "Öğrenci cevabı, bu kriterin gerektirdiği anlamı karşılıyor mu?"
+    3. Kelime eşleşmesi arama. Aynı anlama gelen ifadeleri TAM karşılanmış say.
+    4. Her kriter için anlamsal karşılama durumunu belirle:
+       - TAM karşılıyor → %100 (Kriter puanının tamamı)
+       - KISMEN karşılıyor → %50-80 (Kriter puanının bir kısmı)
+       - KARŞILAMIYOR → %0-30 (Puan yok veya çok az)
+    5. Kriter puanı = (Karşılama Oranı) × (Kriter Max Puanı)
+    6. Tüm kriter puanlarını topla → Nihai Puan.
+
+    ÖZEL KURALLAR:
+    - Yazım farkları ve terminoloji değişiklikleri anlamı bozmuyorsa ceza sebebi değildir.
+    - Rubrikte yer almayan hiçbir beklenti ekleme.
+    - Semantik benzerlik yüzdesini DOĞRUDAN final puana ekleme, sadece karar verirken destek al.
+
+    ÇIKTI FORMATI (JSON):
+    {{
+      "kriterler": [
+        {{
+            "kriter_adi": "Kavramsal Doğruluk",
+            "durum": "TAM/KISMEN/YOK",
+            "puan": <verilen_puan>,
+            "max_puan": <kriter_max_puani>,
+            "gerekce": "..."
+        }},
+        ... diğer kriterler
+      ],
+      "toplam_puan": <0-100 arası tamsayı - kriterlerin toplamı>,
+      "genel_yorum": "<Tüm değerlendirmeyi özetleyen kısa akademik yorum>"
+    }}
+    
+    Lütfen sadece yukarıdaki JSON formatında yanıt ver.
+    """
 
         payload = {
             "model": OLLAMA_MODEL,
@@ -78,20 +117,33 @@ DEĞERLENDİRME KURALLARI (Çok Önemli - DİKKAT):
         
         # Try to parse JSON
         try:
-            # Find JSON block using regex in case there is extra text
-            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            cleaned_text = response_text.strip()
+            
+            # Remove markdown code blocks (backticks or single quotes)
+            # Handle ```json ... ```, ``` ... ```, '''json ... ''', ''' ... '''
+            cleaned_text = re.sub(r'[`\']{3}(?:json)?\s*(.*?)\s*[`\']{3}', r'\1', cleaned_text, flags=re.DOTALL)
+            
+            # Find JSON block using regex - look for the first { and the last }
+            json_match = re.search(r'\{.*\}', cleaned_text, re.DOTALL)
             if json_match:
                 json_str = json_match.group()
                 result = json.loads(json_str)
                 
-                llm_skoru = float(result.get('puan', 50))
-                eksikler = result.get('eksik_kisimlar', [])
-                genel_yorum = result.get('yorum', '')
+                # New Format Parsing
+                llm_skoru = float(result.get('toplam_puan', result.get('puan', 50))) # Fallback to old key just in case
+                genel_yorum = result.get('genel_yorum', result.get('yorum', ''))
+                kriterler = result.get('kriterler', [])
                 
-                # Format feedback
+                # Format detailed feedback
                 formatted_feedback = genel_yorum
-                if eksikler:
-                    formatted_feedback += "\n\nEksik Noktalar:\n" + "\n".join([f"- {e}" for e in eksikler])
+                if kriterler:
+                    formatted_feedback += "\n\nKRİTER DETAYLARI:\n"
+                    for k in kriterler:
+                        k_adi = k.get('kriter_adi', 'Kriter')
+                        k_puan = k.get('puan', 0)
+                        k_max = k.get('max_puan', '?')
+                        k_gerekce = k.get('gerekce', '')
+                        formatted_feedback += f"- **{k_adi}**: {k_puan}/{k_max} ({k.get('durum', '')}) - {k_gerekce}\n"
                     
                 logger.info(f"Ollama analysis complete: score={llm_skoru}")
                 return {
@@ -122,19 +174,23 @@ DEĞERLENDİRME KURALLARI (Çok Önemli - DİKKAT):
 
 def calculate_final_score(bert_skoru: float, llm_skoru: float) -> float:
     """
-    Calculate hybrid final score with Logic Gate.
-    If LLM says the answer is wrong (low logic score), SBERT similarity shouldn't save it.
+    Calculate final score based on Strict Rubric-Based Semantic Evaluation.
+    
+    In this new system:
+    - The LLM calculates the score by summing the points of satisfied rubric criteria.
+    - SBERT is a helper signal (used inside the prompt context if needed), NOT an independent additive score.
+    - Therefore, this function simply returns the LLM-calculated rubric score.
+    
+    Args:
+        bert_skoru: Score between 0-100 (Logged for reference/debugging)
+        llm_skoru: Score between 0-100 (The Rubric Sum calculated by LLM)
     """
-    # Logic Gate: If LLM score is low (indicating wrong answer or contradiction),
-    # ignore SBERT score to prevent false positives.
-    if llm_skoru < 40:
-        logger.info(f"LLM Score is low ({llm_skoru}), overriding SBERT score.")
-        final_puan = llm_skoru # Direct fail
-    else:
-        # Standard Hybrid Formula: (BERT * 40%) + (LLM * 60%)
-        bert_contribution = bert_skoru * 40
-        llm_contribution = llm_skoru * 0.6
-        final_puan = bert_contribution + llm_contribution
+    
+    logger.info(f"Finalizing Score. LLM (Rubric Sum): {llm_skoru}, SBERT (Ref): {bert_skoru}")
+    
+    # User Rule: "Semantik benzerlik yuzdesini DOGRUDAN final puana ekleme."
+    # The final score is purely the satisfaction of Rubric criteria as judged by the system.
+    final_puan = llm_skoru
         
     final_puan = max(0, min(100, final_puan))
     
@@ -145,7 +201,9 @@ def evaluate_answer(
     ideal_cevap: str, 
     ogrenci_cevabi: str, 
     soru_metni: str = "",
-    anahtar_kelimeler: str = ""
+    anahtar_kelimeler: str = "",
+    answer_key_text: str = None,
+    rubric_text: str = None
 ) -> dict:
     """
     Complete evaluation pipeline: SBERT Similarity + Ollama Analysis
@@ -153,12 +211,19 @@ def evaluate_answer(
     from similarity import calculate_bert_score, calculate_keyword_score
     
     # Step 1: Calculate BERT similarity (SBERT works offline)
-    bert_skoru = calculate_bert_score(ideal_cevap, ogrenci_cevabi)
+    # If we have a massive answer key text, SBERT might be noisy against specific student answer
+    # Ideally we should compare student answer to relevant part of Key.
+    # For now, if we have specific 'ideal_cevap' (per question), use that.
+    # If not, use the full Answer Key (might be suboptimal but better than nothing).
+    reference_text = ideal_cevap if ideal_cevap else (answer_key_text if answer_key_text else "")
+    
+    bert_skoru = calculate_bert_score(reference_text, ogrenci_cevabi)
     # Convert 0-1 score to 0-100 percentage for consistency in logs/thought
     bert_percentage = bert_skoru * 100
     
     # Step 2: Get Ollama analysis (Logic & Missing parts)
-    ollama_result = analyze_with_ollama(ideal_cevap, ogrenci_cevabi, soru_metni)
+    # Pass SBERT score as context
+    ollama_result = analyze_with_ollama(ideal_cevap, ogrenci_cevabi, soru_metni, answer_key_text, rubric_text, bert_score=bert_percentage)
     llm_skoru = ollama_result['llm_skoru']
     yorum = ollama_result['yorum']
     
