@@ -10,6 +10,16 @@ Bu proje, el yazısı sınav kağıtlarını yapay zeka ile okuyan (OCR), anlams
 - **Akıllı Hata Yönetimi:** Yanlış cevapları tespit edip puanı düşürür.
 - **Güvenli:** Puanlama işlemi tamamen bilgisayarınızda (Local) yapılır.
 
+
+---
+
+## 🔒 Öğrenci Gizliliği ve KVKK Uyumluluğu
+Bu sistem **"Privacy by Design"** (Tasarımda Gizlilik) ilkesiyle geliştirilmiştir. 
+
+- **Yerel Anonimleştirme:** Öğrenci isimleri ve numaraları, sınav kağıdı analiz edilmeden **önce**, tamamen kendi bilgisayarınızda (Localhost) tespit edilir ve siyah şeritle kapatılır (Redaction).
+- **Veri Güvenliği:** Google Gemini gibi bulut servislerine gönderilen görüntülerde kişisel veriler (Ad, Soyad, Okul No) **bulunmaz**. Sadece anonim metin içeriği gönderilir.
+- **Teknoloji:** Bu işlem için **EasyOCR (GPU Destekli)** ve **OpenCV** kullanılır. Tesseract kurulumuna gerek yoktur.
+
 ---
 
 ## 🛠️ Gereksinimler

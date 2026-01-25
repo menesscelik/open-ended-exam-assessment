@@ -9,6 +9,9 @@ import logging
 from google import genai
 from dotenv import load_dotenv
 import json
+import cv2
+import easyocr
+import numpy as np
 
 # Determine current directory
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -143,3 +146,128 @@ def process_image_ocr(image: Image.Image, debug_dir: str = None, prompt: str = N
             processing_steps[-1]['error'] = str(e)
             
         raise Exception(f"OCR İşlemi Başarısız: {str(e)}")
+
+
+# Initialize EasyOCR reader once (global) to avoid loading model on every request
+# We use Turkish and English
+try:
+    # Use GPU if available (auto-detect)
+    reader = easyocr.Reader(['tr', 'en'], gpu=True) 
+    logger.info("EasyOCR model loaded successfully (GPU enabled if available).")
+except Exception as e:
+    logger.error(f"Failed to load EasyOCR: {e}")
+    reader = None
+
+def anonymize_student_data_local(image: Image.Image) -> Image.Image:
+    """
+    Detects 'Adı', 'Soyadı', 'Numara' fields using EasyOCR
+    and redacts the handwritten content next to them using OpenCV.
+    Restricted to the top 20% of the page to avoid false positives.
+    """
+    if reader is None:
+        logger.warning("EasyOCR reader not available. Skipping anonymization.")
+        return image
+        
+    try:
+        # Convert PIL to Numpy (RGB)
+        open_cv_image = np.array(image.convert("RGB")) 
+        
+        img_h, img_w, _ = open_cv_image.shape
+        
+        # DEFINITION: Only look at top 25% of the page for student info header
+        header_limit = int(img_h * 0.25)
+        
+        # Crop the image to just the header for OCR to save time and reduce false positives
+        # But for coordinates mapping back to original, passing the full image is easier logic-wise
+        # We can just filter results.
+        
+        # EasyOCR works with numpy array
+        results = reader.readtext(open_cv_image)
+        
+        # Convert to BGR for OpenCV drawing
+        overlay = open_cv_image[:, :, ::-1].copy()
+        
+        # Strict keywords as requested by user
+        keywords = ['adi', 'adı', 'soyadi', 'soyadı', 'numara', 'no', 'ad', 'soyad']
+        
+        # Track if we found and masked the header to stop (optional, but user said "tek bir yer")
+        # But let's just use region restriction which is safer.
+        
+        # Track matches to sort and limit to first 2
+        matches_found = []
+
+        for (bbox, text, prob) in results:
+            # bbox coordinates: [[xTL, yTL], [xTR, yTR], [xBR, yBR], [xBL, yBL]]
+            y_min = int(bbox[0][1])
+            x_min = int(bbox[0][0])
+            
+            # CRITICAL CHECK: Ignore anything below the header limit
+            if y_min > header_limit:
+                continue
+                
+            text_lower = text.lower().strip()
+            
+            # Simple keyword matching
+            matched = False
+            for k in keywords:
+                # Use word boundary check for short words like 'ad' to avoid 'kadar', 'sadece'
+                # But 'ad:' or 'ad ' might be present.
+                # Given user request "ilk iki", sorting is safer.
+                if k in text_lower:
+                    matched = True
+                    break
+            
+            if matched:
+                matches_found.append({
+                    'bbox': bbox,
+                    'text': text,
+                    'y': y_min,
+                    'x': x_min
+                })
+
+        # Sort matches by Y (top to bottom), then X (left to right) to find the header fields
+        # Usually: "Ad Soyad" (Top Left-ish), "Ogrenci No" (Top Right-ish or Below)
+        matches_found.sort(key=lambda item: (item['y'], item['x']))
+        
+        # Limit to first 2 matches (Ad Soyad, Ogrenci No)
+        matches_to_redact = matches_found[:2]
+        
+        for match in matches_to_redact:
+            bbox = match['bbox']
+            text = match['text']
+            
+            print(f"DEBUG: Masking header field '{text}' at {bbox}")
+            
+            x_min = int(bbox[0][0])
+            y_min = int(bbox[0][1])
+            x_max = int(bbox[2][0])
+            y_max = int(bbox[2][1])
+            
+            w = x_max - x_min
+            h = y_max - y_min
+            
+            # Logic: Redact to the right
+            redact_x = x_max + 5
+            redact_y = y_min - 5
+            redact_h = h + 10 
+            
+            if 'no' in text.lower() or 'numara' in text.lower():
+                redact_w = 300 # Increased from 250
+            else:
+                redact_w = 500 # Increased from 400
+                
+            img_h, img_w, _ = open_cv_image.shape
+            if redact_x + redact_w > img_w:
+                redact_w = img_w - redact_x
+                
+            cv2.rectangle(overlay, (redact_x, redact_y), (redact_x + redact_w, redact_y + redact_h), (0, 0, 0), -1)
+
+        # Convert back to RGB and PIL
+        result_image = cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB)
+        return Image.fromarray(result_image)
+        
+    except Exception as e:
+        logger.error(f"EasyOCR anonymization failed: {e}")
+        return image
+
+

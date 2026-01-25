@@ -9,7 +9,7 @@ import uuid
 import json
 from typing import List, Dict, Any
 from dotenv import load_dotenv
-from ocr_utils import process_image_ocr
+from ocr_utils import process_image_ocr, anonymize_student_data_local
 from database import get_db, init_db
 from models import SinavSorulari, OgrenciSonuclari
 from schemas import (
@@ -334,23 +334,27 @@ async def upload_pdf(file: UploadFile = File(...)):
                     detail="Desteklenmeyen dosya formatı. Lütfen PDF veya görsel dosyası yükleyin."
                 )
         
-        # Save processed images for inspection
-        save_dir = os.path.join("processed_images", request_id)
-        os.makedirs(save_dir, exist_ok=True)
-        
         for i, image in enumerate(images):
-            image_path = os.path.join(save_dir, f"page_{i+1}.png")
-            image.save(image_path, "PNG")
+            # Apply local anonymization (Redact Name/Number)
+            # This happens BEFORE saving and BEFORE Gemini OCR
+            image = anonymize_student_data_local(image)
+            images[i] = image # Update list with redacted image
+             
+            # Additional save to explicit 'anonymized_uploads' folder as requested
+            try:
+                anon_dir = os.path.join(base_dir, "anonymized_uploads")
+                os.makedirs(anon_dir, exist_ok=True)
+                anon_filename = f"anon_{request_id}_page_{i+1}.png"
+                image.save(os.path.join(anon_dir, anon_filename), "PNG")
+            except Exception as save_err:
+                print(f"Warning: Could not save backup anonymized image: {save_err}")
             
         extracted_data = []
         
         for i, image in enumerate(images):
             try:
                 # Perform OCR and normalization using our utility module
-                page_debug_dir = os.path.join(save_dir, f"page_{i+1}")
-                os.makedirs(page_debug_dir, exist_ok=True)
-                
-                ocr_result = process_image_ocr(image, debug_dir=page_debug_dir)
+                ocr_result = process_image_ocr(image, debug_dir=None)
                 
                 extracted_data.append({
                     "page": i + 1,

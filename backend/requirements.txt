@@ -11,3 +11,5 @@ sentence-transformers
 torch
 numpy
 requests
+opencv-python
+easyocr
