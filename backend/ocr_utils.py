@@ -158,15 +158,19 @@ except Exception as e:
     logger.error(f"Failed to load EasyOCR: {e}")
     reader = None
 
-def anonymize_student_data_local(image: Image.Image) -> Image.Image:
+def anonymize_student_data_local(image: Image.Image) -> tuple[Image.Image, dict]:
     """
-    Detects 'Adı', 'Soyadı', 'Numara' fields using EasyOCR
-    and redacts the handwritten content next to them using OpenCV.
-    Restricted to the top 20% of the page to avoid false positives.
+    Detects 'Adı', 'Soyadı', 'Numara' fields using EasyOCR,
+    extracts the text next to them (value), and then redacts that area.
+    
+    Returns:
+        (redacted_image, extracted_data_dict)
     """
+    extracted_data = {}
+    
     if reader is None:
         logger.warning("EasyOCR reader not available. Skipping anonymization.")
-        return image
+        return image, extracted_data
         
     try:
         # Convert PIL to Numpy (RGB)
@@ -177,27 +181,19 @@ def anonymize_student_data_local(image: Image.Image) -> Image.Image:
         # DEFINITION: Only look at top 25% of the page for student info header
         header_limit = int(img_h * 0.25)
         
-        # Crop the image to just the header for OCR to save time and reduce false positives
-        # But for coordinates mapping back to original, passing the full image is easier logic-wise
-        # We can just filter results.
-        
         # EasyOCR works with numpy array
+        # Get all text blocks on the page (or at least the top part if we cropped, but here we pass full)
         results = reader.readtext(open_cv_image)
         
         # Convert to BGR for OpenCV drawing
         overlay = open_cv_image[:, :, ::-1].copy()
         
         # Strict keywords as requested by user
-        keywords = ['adi', 'adı', 'soyadi', 'soyadı', 'numara', 'no', 'ad', 'soyad']
+        keywords = ['adi', 'adı', 'soyadi', 'soyadı', 'numara', 'no', 'ad', 'soyad', 'ogrenci']
         
-        # Track if we found and masked the header to stop (optional, but user said "tek bir yer")
-        # But let's just use region restriction which is safer.
-        
-        # Track matches to sort and limit to first 2
         matches_found = []
 
         for (bbox, text, prob) in results:
-            # bbox coordinates: [[xTL, yTL], [xTR, yTR], [xBR, yBR], [xBL, yBL]]
             y_min = int(bbox[0][1])
             x_min = int(bbox[0][0])
             
@@ -207,12 +203,8 @@ def anonymize_student_data_local(image: Image.Image) -> Image.Image:
                 
             text_lower = text.lower().strip()
             
-            # Simple keyword matching
             matched = False
             for k in keywords:
-                # Use word boundary check for short words like 'ad' to avoid 'kadar', 'sadece'
-                # But 'ad:' or 'ad ' might be present.
-                # Given user request "ilk iki", sorting is safer.
                 if k in text_lower:
                     matched = True
                     break
@@ -225,18 +217,17 @@ def anonymize_student_data_local(image: Image.Image) -> Image.Image:
                     'x': x_min
                 })
 
-        # Sort matches by Y (top to bottom), then X (left to right) to find the header fields
-        # Usually: "Ad Soyad" (Top Left-ish), "Ogrenci No" (Top Right-ish or Below)
+        # Sort matches by Y (top to bottom), then X (left to right)
         matches_found.sort(key=lambda item: (item['y'], item['x']))
         
-        # Limit to first 2 matches (Ad Soyad, Ogrenci No)
-        matches_to_redact = matches_found[:2]
+        # Limit to likely fields (Ad Soyad, Numara)
+        # We try to be smart: if we find multiple, we redact them.
+        # But we explicitly want to capture Name and Number.
+        matches_to_redact = matches_found[:2] # Limited to strictly 2 as requested
         
         for match in matches_to_redact:
             bbox = match['bbox']
-            text = match['text']
-            
-            print(f"DEBUG: Masking header field '{text}' at {bbox}")
+            label_text = match['text']
             
             x_min = int(bbox[0][0])
             y_min = int(bbox[0][1])
@@ -246,28 +237,101 @@ def anonymize_student_data_local(image: Image.Image) -> Image.Image:
             w = x_max - x_min
             h = y_max - y_min
             
-            # Logic: Redact to the right
+            # Define Redaction Zone (To the right of the label)
             redact_x = x_max + 5
             redact_y = y_min - 5
             redact_h = h + 10 
             
-            if 'no' in text.lower() or 'numara' in text.lower():
-                redact_w = 300 # Increased from 250
+            if 'no' in label_text.lower() or 'numara' in label_text.lower():
+                redact_w = 300 
+                key_type = "number"
             else:
-                redact_w = 500 # Increased from 400
+                redact_w = 500 
+                key_type = "name"
                 
-            img_h, img_w, _ = open_cv_image.shape
             if redact_x + redact_w > img_w:
                 redact_w = img_w - redact_x
+            
+            redaction_rect = (redact_x, redact_y, redact_x + redact_w, redact_y + redact_h)
+            
+            # --- EXTRACTION STEP ---
+            # Define valid X range for this label
+            # Start: Right edge of current label
+            # End: Left edge of the NEXT label on the same line (if any), or Page Width
+            
+            valid_x_start = x_max
+            valid_x_end = img_w
+            
+            # Find closest label to the right on the same line
+            for other_match in matches_to_redact:
+                if other_match['bbox'] == bbox: continue
                 
+                other_y_center = (other_match['bbox'][0][1] + other_match['bbox'][2][1]) / 2
+                label_y_center = (bbox[0][1] + bbox[2][1]) / 2
+                
+                # Check if on same line
+                if abs(other_y_center - label_y_center) < (h * 1.5):
+                     other_x_min = other_match['bbox'][0][0]
+                     # If it is to the right of current label
+                     if other_x_min > x_max:
+                         # Update valid_x_end if this label is closer than current valid_x_end
+                         if other_x_min < valid_x_end:
+                             valid_x_end = other_x_min
+
+            found_values = []
+            
+            for (r_bbox, r_text, r_prob) in results:
+                if r_bbox == bbox: continue
+                
+                r_x_min = r_bbox[0][0]
+                r_x_max = r_bbox[2][0]
+                r_y_center = (r_bbox[0][1] + r_bbox[2][1]) / 2
+                label_y_center = (bbox[0][1] + bbox[2][1]) / 2
+
+                # 1. Check Vertical Alignment (Same Line)
+                if abs(r_y_center - label_y_center) > (h * 1.2): 
+                    continue
+
+                # 2. Check Horizontal Alignment (Strictly within valid range)
+                # Text must start AFTER the label ends
+                # Text must start BEFORE the next label starts
+                if r_x_min > valid_x_start and r_x_min < valid_x_end:
+                    found_values.append({
+                        'text': r_text,
+                        'x': r_x_min
+                    })
+            
+            # Sort by X
+            found_values.sort(key=lambda v: v['x'])
+            extracted_value = " ".join([v['text'] for v in found_values]).strip()
+            
+            # Post-Processing: Filtering based on known types
+            if key_type == "number":
+                # If expecting number, filter out non-digit heavy strings if possible, 
+                # but user might have written "No: 123", so we just keep it.
+                # But if we accidentally grabbed a name, it's bad.
+                # Let's rely on the geometric constraint above.
+                pass
+            
+            if extracted_value:
+                if key_type == "name" and "name" not in extracted_data:
+                    extracted_data["name"] = extracted_value
+                elif key_type == "number" and "number" not in extracted_data:
+                     # Remove potential mistakenly captured text parts that are clearly not numbers?
+                     # For now, trust the geometry.
+                    extracted_data["number"] = extracted_value
+            
+                print(f"DEBUG: Extracted '{extracted_value}' for label '{label_text}' (Range: {valid_x_start}-{valid_x_end})")
+
+            # --- REDACTION STEP ---
             cv2.rectangle(overlay, (redact_x, redact_y), (redact_x + redact_w, redact_y + redact_h), (0, 0, 0), -1)
 
         # Convert back to RGB and PIL
         result_image = cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB)
-        return Image.fromarray(result_image)
+        return Image.fromarray(result_image), extracted_data
         
     except Exception as e:
         logger.error(f"EasyOCR anonymization failed: {e}")
-        return image
+        return image, extracted_data
 
 

@@ -69,5 +69,17 @@ class PuanlamaRequest(BaseModel):
 class PuanlamaResponse(BaseModel):
     bert_skoru: float
     llm_skoru: float
-    final_puan: float
     yorum: str
+
+
+# Raporlama Schemas
+class ReportItem(BaseModel):
+    soru_no: int
+    soru_metni: Optional[str] = ""
+    ogrenci_cevabi: Optional[str] = ""
+    final_puan: Optional[float] = 0.0
+    yorum: Optional[str] = ""
+
+class ReportRequest(BaseModel):
+    request_id: str
+    results: List[ReportItem]

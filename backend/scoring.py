@@ -71,23 +71,15 @@ def analyze_with_ollama(ideal_cevap: str, ogrenci_cevabi: str, soru_metni: str =
 
     ÖZEL KURALLAR:
     - Yazım farkları ve terminoloji değişiklikleri anlamı bozmuyorsa ceza sebebi değildir.
-    - Rubrikte yer almayan hiçbir beklenti ekleme.
-    - Semantik benzerlik yüzdesini DOĞRUDAN final puana ekleme, sadece karar verirken destek al.
+    - Semantik benzerlik yüzdesini DOĞRUDAN final puana ekleme.
+    - Soruya ait özel bir puan değeri (Örn: "Soru 1: 10 Puan") metinlerde belirtilmişse, "soru_max_puan" olarak onu kullan ve puanlamayı o ölçekte yap. Belirtilmemişse 100 üzerinden değerlendir.
 
     ÇIKTI FORMATI (JSON):
     {{
-      "kriterler": [
-        {{
-            "kriter_adi": "Kavramsal Doğruluk",
-            "durum": "TAM/KISMEN/YOK",
-            "puan": <verilen_puan>,
-            "max_puan": <kriter_max_puani>,
-            "gerekce": "..."
-        }},
-        ... diğer kriterler
-      ],
-      "toplam_puan": <0-100 arası tamsayı - kriterlerin toplamı>,
-      "genel_yorum": "<Tüm değerlendirmeyi özetleyen kısa akademik yorum>"
+      "kriterler": [ ... ],
+      "toplam_puan": <verilen_puan>,
+      "soru_max_puan": <bu_sorunun_tam_puani_veya_100>,
+      "genel_yorum": "..."
     }}
     
     Lütfen sadece yukarıdaki JSON formatında yanıt ver.
@@ -98,7 +90,7 @@ def analyze_with_ollama(ideal_cevap: str, ogrenci_cevabi: str, soru_metni: str =
             "prompt": prompt,
             "stream": False,
             "options": {
-                "temperature": 0.1  # Low temperature for more deterministic/factual output
+                "temperature": 0.1
             }
         }
 
@@ -107,7 +99,7 @@ def analyze_with_ollama(ideal_cevap: str, ogrenci_cevabi: str, soru_metni: str =
         
         if response.status_code != 200:
             logger.error(f"Ollama API error: {response.text}")
-            return {'llm_skoru': 50.0, 'yorum': f"Ollama hatası: {response.status_code}"}
+            return {'llm_skoru': 50.0, 'max_puan': 100, 'yorum': f"Ollama hatası: {response.status_code}"}
             
         response_data = response.json()
         response_text = response_data.get("response", "")
@@ -120,7 +112,6 @@ def analyze_with_ollama(ideal_cevap: str, ogrenci_cevabi: str, soru_metni: str =
             cleaned_text = response_text.strip()
             
             # Remove markdown code blocks (backticks or single quotes)
-            # Handle ```json ... ```, ``` ... ```, '''json ... ''', ''' ... '''
             cleaned_text = re.sub(r'[`\']{3}(?:json)?\s*(.*?)\s*[`\']{3}', r'\1', cleaned_text, flags=re.DOTALL)
             
             # Find JSON block using regex - look for the first { and the last }
@@ -130,24 +121,42 @@ def analyze_with_ollama(ideal_cevap: str, ogrenci_cevabi: str, soru_metni: str =
                 result = json.loads(json_str)
                 
                 # New Format Parsing
-                llm_skoru = float(result.get('toplam_puan', result.get('puan', 50))) # Fallback to old key just in case
+                llm_skoru = float(result.get('toplam_puan', result.get('puan', 50)))
+                max_puan = float(result.get('soru_max_puan', 100))
                 genel_yorum = result.get('genel_yorum', result.get('yorum', ''))
                 kriterler = result.get('kriterler', [])
                 
-                # Format detailed feedback
-                formatted_feedback = genel_yorum
+                # Check if criterias have max_score and if max_puan is still default (100)
+                # If sum of criteria max points is different from 100 (e.g. 10, 15), we should use that sum.
                 if kriterler:
-                    formatted_feedback += "\n\nKRİTER DETAYLARI:\n"
+                    sum_criteria_max = 0
                     for k in kriterler:
-                        k_adi = k.get('kriter_adi', 'Kriter')
-                        k_puan = k.get('puan', 0)
-                        k_max = k.get('max_puan', '?')
-                        k_gerekce = k.get('gerekce', '')
-                        formatted_feedback += f"- **{k_adi}**: {k_puan}/{k_max} ({k.get('durum', '')}) - {k_gerekce}\n"
+                        try:
+                            sum_criteria_max += float(k.get('max_puan', 0))
+                        except: pass
                     
-                logger.info(f"Ollama analysis complete: score={llm_skoru}")
+                    # If sum is significant (e.g. > 0) and max_puan is seemingly default (100) or 0
+                    # We override max_puan with the sum of checks. 
+                    # E.g. If rubric has 2 items of 5 points each -> Total 10.
+                    if sum_criteria_max > 0 and (max_puan == 100 or max_puan == 0):
+                        if sum_criteria_max != 100:
+                            logger.info(f"Overriding max_puan {max_puan} with sum of criteria: {sum_criteria_max}")
+                            max_puan = sum_criteria_max
+
+                # Format detailed feedback
+                # User requested to remove itemized rubric details and only keep the commentary.
+                formatted_feedback = genel_yorum
+                
+                # We calculate max_puan implicitly if needed, but we don't show the breakdown text anymore.
+                if kriterler:
+                     pass 
+                    
+                logger.info(f"Ollama analysis complete: score={llm_skoru}/{max_puan}")
+                    
+                logger.info(f"Ollama analysis complete: score={llm_skoru}/{max_puan}")
                 return {
-                    'llm_skoru': max(0, min(100, llm_skoru)),
+                    'llm_skoru': llm_skoru,
+                    'max_puan': max_puan,
                     'yorum': formatted_feedback
                 }
             else:
@@ -172,28 +181,12 @@ def analyze_with_ollama(ideal_cevap: str, ogrenci_cevabi: str, soru_metni: str =
         }
 
 
-def calculate_final_score(bert_skoru: float, llm_skoru: float) -> float:
+def calculate_final_score(bert_skoru: float, llm_skoru: float, max_puan: float = 100.0) -> float:
     """
-    Calculate final score based on Strict Rubric-Based Semantic Evaluation.
-    
-    In this new system:
-    - The LLM calculates the score by summing the points of satisfied rubric criteria.
-    - SBERT is a helper signal (used inside the prompt context if needed), NOT an independent additive score.
-    - Therefore, this function simply returns the LLM-calculated rubric score.
-    
-    Args:
-        bert_skoru: Score between 0-100 (Logged for reference/debugging)
-        llm_skoru: Score between 0-100 (The Rubric Sum calculated by LLM)
+    Returns the LLM calculated score, respecting the max_puan limit.
     """
-    
-    logger.info(f"Finalizing Score. LLM (Rubric Sum): {llm_skoru}, SBERT (Ref): {bert_skoru}")
-    
-    # User Rule: "Semantik benzerlik yuzdesini DOGRUDAN final puana ekleme."
-    # The final score is purely the satisfaction of Rubric criteria as judged by the system.
     final_puan = llm_skoru
-        
-    final_puan = max(0, min(100, final_puan))
-    
+    final_puan = max(0, min(max_puan, final_puan))
     return round(final_puan, 2)
 
 
@@ -210,35 +203,30 @@ def evaluate_answer(
     """
     from similarity import calculate_bert_score, calculate_keyword_score
     
-    # Step 1: Calculate BERT similarity (SBERT works offline)
-    # If we have a massive answer key text, SBERT might be noisy against specific student answer
-    # Ideally we should compare student answer to relevant part of Key.
-    # For now, if we have specific 'ideal_cevap' (per question), use that.
-    # If not, use the full Answer Key (might be suboptimal but better than nothing).
+    # Step 1: Calculate BERT similarity
     reference_text = ideal_cevap if ideal_cevap else (answer_key_text if answer_key_text else "")
     
     bert_skoru = calculate_bert_score(reference_text, ogrenci_cevabi)
-    # Convert 0-1 score to 0-100 percentage for consistency in logs/thought
     bert_percentage = bert_skoru * 100
     
-    # Step 2: Get Ollama analysis (Logic & Missing parts)
-    # Pass SBERT score as context
+    # Step 2: Get Ollama analysis
     ollama_result = analyze_with_ollama(ideal_cevap, ogrenci_cevabi, soru_metni, answer_key_text, rubric_text, bert_score=bert_percentage)
     llm_skoru = ollama_result['llm_skoru']
+    max_puan = ollama_result.get('max_puan', 100)
     yorum = ollama_result['yorum']
     
-    # Step 3: Calculate final score
-    final_puan = calculate_final_score(bert_percentage, llm_skoru)
+    # Step 3: Calculate final
+    final_puan = calculate_final_score(bert_percentage, llm_skoru, max_puan)
     
-    # Optional: Add keyword info
     if anahtar_kelimeler:
         keyword_score = calculate_keyword_score(anahtar_kelimeler, ogrenci_cevabi)
         if keyword_score < 0.5:
              yorum += f"\n\n(Not: Anahtar kelime eşleşmesi düşük: %{int(keyword_score*100)})"
     
     return {
-        'bert_skoru': round(bert_skoru, 4),  # Keep as 0-1 for frontend display consistency if needed, or update frontend
+        'bert_skoru': round(bert_skoru, 4), 
         'llm_skoru': round(llm_skoru, 2),
         'final_puan': final_puan,
+        'max_puan': max_puan,
         'yorum': yorum
     }

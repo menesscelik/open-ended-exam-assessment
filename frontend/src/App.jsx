@@ -19,7 +19,9 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [scoring, setScoring] = useState(false);
   const [result, setResult] = useState(null);
+
   const [error, setError] = useState(null);
+  const [requestId, setRequestId] = useState(null); // Store Request ID for Report
 
   // Editable OCR results (Student)
   const [editableResults, setEditableResults] = useState([]);
@@ -120,6 +122,7 @@ function App() {
 
       const data = await response.json();
       setResult(data);
+      if (data.id) setRequestId(data.id); // Save ID
       console.log("OCR Response Data:", data);
 
       let editable = [];
@@ -202,6 +205,8 @@ function App() {
           const data = await response.json();
           results.push({
             soru_no: item.soru_no,
+            soru_metni: item.soru_metni || "",
+            ogrenci_cevabi: item.ogrenci_cevabi || "",
             ...data
           });
         } else {
@@ -220,6 +225,47 @@ function App() {
       setError(err.message || 'Puanlama sırasında hata oluştu.');
     } finally {
       setScoring(false);
+    }
+  };
+
+  const handleDownloadReport = async () => {
+    if (!requestId || scoringResults.length === 0) return;
+
+    try {
+      setLoading(true);
+      const payload = {
+        request_id: requestId,
+        results: scoringResults
+      };
+
+      const response = await fetch(`${API_URL}/api/create-report`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error('Rapor oluşturulamadı.');
+      }
+
+      // Handle Blob for Download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Sinav_Raporu_${requestId.substring(0, 8)}.pdf`; // Fallback name, browser might use header
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+    } catch (err) {
+      console.error("Report Error:", err);
+      setError(err.message || "Rapor indirilirken hata oluştu.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -509,12 +555,22 @@ function App() {
                   <Award className="w-6 h-6 text-green-600" />
                   Puanlama Sonuçları
                 </h2>
-                <button
-                  onClick={() => { setShowResults(false); setShowConfirm(false); setFile(null); }}
-                  className="text-indigo-600 hover:text-indigo-800 font-medium"
-                >
-                  Yeni Öğrenci Kağıdı Yükle
-                </button>
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleDownloadReport}
+                    disabled={loading}
+                    className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition-colors"
+                  >
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Award className="w-4 h-4" />}
+                    PDF Raporu İndir
+                  </button>
+                  <button
+                    onClick={() => { setShowResults(false); setShowConfirm(false); setFile(null); setRequestId(null); }}
+                    className="text-indigo-600 hover:text-indigo-800 font-medium"
+                  >
+                    Yeni Öğrenci Kağıdı Yükle
+                  </button>
+                </div>
               </div>
 
               {scoringResults.map((res, index) => {
@@ -524,7 +580,7 @@ function App() {
                     <div className="flex items-center justify-between mb-4">
                       <span className="text-lg font-semibold text-slate-800">Soru {res.soru_no}</span>
                       {!res.error && (
-                        <span className={`text-3xl font-bold ${isLowScore ? 'text-orange-600' : 'text-green-600'}`}>{res.final_puan}/100</span>
+                        <span className={`text-3xl font-bold ${isLowScore ? 'text-orange-600' : 'text-green-600'}`}>{res.final_puan}/{res.max_puan || 100}</span>
                       )}
                     </div>
 

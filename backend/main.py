@@ -14,8 +14,10 @@ from database import get_db, init_db
 from models import SinavSorulari, OgrenciSonuclari
 from schemas import (
     SinavSorusuCreate, SinavSorusuUpdate, SinavSorusuResponse,
-    OgrenciSonucuCreate, OgrenciSonucuResponse
+    OgrenciSonucuCreate, OgrenciSonucuResponse, ReportRequest
 )
+from report_generator import generate_exam_report_pdf
+from fastapi.responses import FileResponse
 
 # Load environment variables
 load_dotenv()
@@ -334,11 +336,17 @@ async def upload_pdf(file: UploadFile = File(...)):
                     detail="Desteklenmeyen dosya formatı. Lütfen PDF veya görsel dosyası yükleyin."
                 )
         
+        all_student_data = {}
+        
         for i, image in enumerate(images):
             # Apply local anonymization (Redact Name/Number)
             # This happens BEFORE saving and BEFORE Gemini OCR
-            image = anonymize_student_data_local(image)
+            image, page_student_data = anonymize_student_data_local(image)
             images[i] = image # Update list with redacted image
+            
+            # Merge found data
+            if page_student_data:
+                all_student_data.update(page_student_data)
              
             # Additional save to explicit 'anonymized_uploads' folder as requested
             try:
@@ -348,6 +356,16 @@ async def upload_pdf(file: UploadFile = File(...)):
                 image.save(os.path.join(anon_dir, anon_filename), "PNG")
             except Exception as save_err:
                 print(f"Warning: Could not save backup anonymized image: {save_err}")
+            
+        # Save extracted student data
+        if all_student_data:
+            try:
+                os.makedirs("results", exist_ok=True)
+                student_data_path = f"results/{request_id}_student.json"
+                with open(student_data_path, "w", encoding="utf-8") as f:
+                    json.dump(all_student_data, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                print(f"Warning: Could not save student data: {e}")
             
         extracted_data = []
         
@@ -395,4 +413,44 @@ async def upload_pdf(file: UploadFile = File(...)):
             status_code=500,
             detail=f"Dosya işlenirken bir hata oluştu: {str(e)}"
         )
+
+
+@app.post("/api/create-report")
+def create_report(request: ReportRequest):
+    """
+    Generates a PDF report for the given exam results.
+    """
+    try:
+        # Load student data
+        student_data = {}
+        student_data_path = f"results/{request.request_id}_student.json"
+        
+        if os.path.exists(student_data_path):
+            try:
+                with open(student_data_path, "r", encoding="utf-8") as f:
+                    student_data = json.load(f)
+            except Exception as e:
+                print(f"Warning: Error reading student data: {e}")
+        
+        # Generate PDF
+        # Sanitize filename
+        s_name = student_data.get('name', 'Ogrenci').replace(' ', '_')
+        s_num = student_data.get('number', 'No')
+        # Remove non-alphanumeric chars from filename just in case
+        import re
+        s_name = re.sub(r'[^\w\-_]', '', s_name)
+        s_num = re.sub(r'[^\w\-_]', '', str(s_num))
+        
+        pdf_filename = f"{s_name}_{s_num}.pdf"
+        output_path = f"results/{pdf_filename}"
+        
+        # Generate
+        generate_exam_report_pdf(student_data, request.results, output_path)
+        
+        return FileResponse(output_path, media_type='application/pdf', filename=pdf_filename)
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Rapor oluşturulamadı: {str(e)}")
 
