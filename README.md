@@ -1,24 +1,28 @@
 # 📝 Açık Uçlu Sınav Değerlendirme Sistemi (Automated Handwriting Assessment)
 
-Bu proje, el yazısı sınav kağıtlarını yapay zeka ile okuyan (OCR), anlamsal (SBERT) ve mantıksal (LLM-Ollama) olarak analiz edip puanlayan bir sistemdir.
+Bu proje, el yazısı sınav kağıtlarını yapay zeka ile okuyan (OCR), verilen cevap anahtarı ve rubriğe göre analiz edip puanlayan ve detaylı PDF raporları üreten gelişmiş bir sistemdir.
 
 ---
 
 ## 🚀 Özellikler
-- **Çoklu Soru Ayıklama:** Tek sayfada birden fazla soru varsa otomatik ayırır.
-- **Hibrit Puanlama (Offline):** Anlamsal benzerlik (%40) + Mantıksal doğruluk (%60).
-- **Akıllı Hata Yönetimi:** Yanlış cevapları tespit edip puanı düşürür.
-- **Güvenli:** Puanlama işlemi tamamen bilgisayarınızda (Local) yapılır.
 
+- **Gelişmiş OCR (Google Gemini Vision):** El yazısı metinleri yüksek doğrulukla dijitalleştirir. Türkçe karakter desteği tamdır.
+- **Akıllı Soru Ayrıştırma:** Sınav kağıdındaki soruları ve cevapları otomatik olarak birbirinden ayırır.
+- **Yapay Zeka Destekli Puanlama (Google Gemini):** 
+    - Cevapları sadece kelime bazlı değil, anlamsal olarak analiz eder.
+    - **Dinamik Puanlama:** Rubrikte belirtilen puan ölçeğini (örn. 15 puan) otomatik algılar ve buna göre puanlar (Asla keyfi olarak 100 üzerinden değerlendirmez).
+- **PDF Raporlama:** Her öğrenci için, soru bazlı detaylı analizlerin ve puanların yer aldığı profesyonel bir PDF karnesi oluşturur.
+- **Hata Toleransı:** API kesintilerine (429 Kota Aşımı veya 500 Sunucu Hatası) karşı akıllı "yeniden deneme" (retry) mekanizması ile kesintisiz çalışır.
 
 ---
 
 ## 🔒 Öğrenci Gizliliği ve KVKK Uyumluluğu
-Bu sistem **"Privacy by Design"** (Tasarımda Gizlilik) ilkesiyle geliştirilmiştir. 
 
-- **Yerel Anonimleştirme:** Öğrenci isimleri ve numaraları, sınav kağıdı analiz edilmeden **önce**, tamamen kendi bilgisayarınızda (Localhost) tespit edilir ve siyah şeritle kapatılır (Redaction).
-- **Veri Güvenliği:** Google Gemini gibi bulut servislerine gönderilen görüntülerde kişisel veriler (Ad, Soyad, Okul No) **bulunmaz**. Sadece anonim metin içeriği gönderilir.
-- **Teknoloji:** Bu işlem için **EasyOCR (GPU Destekli)** ve **OpenCV** kullanılır. Tesseract kurulumuna gerek yoktur.
+Bu sistem **"Privacy by Design"** (Tasarımda Gizlilik) ilkesiyle geliştirilmiştir:
+
+1.  **Yerel Anonimleştirme:** Öğrenci isimleri ve numaraları, sınav kağıdı buluta gönderilmeden **önce**, tamamen kendi bilgisayarınızda (Localhost) tespit edilir ve görüntü üzerinde siyah şeritle kapatılır (Redaction).
+2.  **Veri Güvenliği:** Google Gemini API'sine gönderilen görüntülerde kişisel veriler (Ad, Soyad, Okul No) **bulunmaz**. Sadece anonimleştirilmiş sınav içeriği işlenir.
+3.  **PDF Raporları:** Orijinal kimlik bilgileri sadece yerel bilgisayarınızda rapor oluşturulurken kullanılır ve PDF içine işlenir.
 
 ---
 
@@ -27,18 +31,17 @@ Bu sistem **"Privacy by Design"** (Tasarımda Gizlilik) ilkesiyle geliştirilmi�
 Projenin çalışması için bilgisayarınızda şunlar kurulu olmalıdır:
 
 1.  **Python** (3.10 veya üzeri)
-2.  **Node.js** (Frontend için)
-3.  **Ollama** (Lokal LLM için - [İndir](https://ollama.com))
+2.  **Node.js** (Frontend arayüzü için)
+3.  **Google Gemini API Anahtarı** (Ücretsiz temin edilebilir)
 
 ###   Backend Bağımlılıkları (`backend/requirements.txt`)
 Aşağıdaki kütüphaneler kurulum sırasında otomatik yüklenir:
 - `fastapi`, `uvicorn`: API Sunucusu
-- `sqlalchemy`: Veritabanı
-- `sentence-transformers`, `torch`, `numpy`: SBERT Modeli
-- `google-generativeai`: Gemini OCR
-- `requests`: Ollama ile iletişim
-- `pdf2image`, `pytesseract`, `pillow`: PDF ve resim işleme
-- `python-multipart`, `python-dotenv`: Yardımcı araçlar
+- `google-generativeai`: Gemini OCR ve Puanlama
+- `reportlab`: PDF Rapor Üretimi
+- `sentence-transformers`: Ek metin analizi (Opsiyonel)
+- `opencv-python`: Görüntü işleme ve anonimleştirme
+- `pdf2image`: PDF formatındaki sınavları işlemek için
 
 ---
 
@@ -51,8 +54,8 @@ Proje klasöründeki **`0_setup_project.bat`** dosyasına çift tıklayın.
 
 Bu script şunları otomatik yapar:
 1.  Python sanal ortamı (`.venv`) oluşturur.
-2.  `backend/requirements.txt` içindeki tüm kütüphaneleri yükler.
-3.  `frontend` klasörüne gidip `npm install` komutuyla React paketlerini yükler.
+2.  Gerekli tüm Python kütüphanelerini yükler.
+3.  React (Frontend) bağımlılıklarını yükler.
 
 *(Alternatif Manuel Kurulum):*
 ```bash
@@ -66,17 +69,12 @@ cd frontend
 npm install
 ```
 
-### 2. Ollama Modelini İndirin
-Sistemin puanlama yapabilmesi için `deepseek-r1:8b` modeline ihtiyacı vardır. Terminalde (CMD) şu komutu çalıştırın:
-```bash
-ollama pull deepseek-r1:8b
-```
-*(Not: `start_project.bat` bunu otomatik yapmaya çalışır ancak ilk kurulumda manuel yapmanız önerilir, yaklaşık 4.7 GB veri iner.)*
+### 2. API Anahtarını Tanımlayın
+Google AI Studio'dan alacağınız API anahtarını sisteme tanıtmanız gerekir.
+`backend` klasörü içinde `.env` adında bir dosya oluşturun ve içine şunu yazın:
 
-### 3. API Anahtarını Kontrol Edin
-Verdiğiniz Google Gemini API anahtarı `backend/ocr_utils.py` dosyasına gömülüdür. Değiştirmek isterseniz `backend/.env` dosyası oluşturup içine yazabilirsiniz:
 ```
-GOOGLE_API_KEY=AIza..........
+GOOGLE_API_KEY=AIzaSy... (Kendi anahtarınızı yapıştırın)
 ```
 
 ---
@@ -86,21 +84,22 @@ GOOGLE_API_KEY=AIza..........
 Sistemi kullanıma hazır hale getirmek için **`start_project.bat`** dosyasına çift tıklamanız yeterlidir.
 
 Bu script:
-1.  **Ollama** servisini kontrol eder, kapalıysa başlatır.
-2.  **Backend** sunucusunu açar: `http://127.0.0.1:8000`
-3.  **Frontend** uygulamasını açar: `http://localhost:5173`
+1.  **Backend** sunucusunu açar: `http://127.0.0.1:8000`
+2.  **Frontend** uygulamasını açar: `http://localhost:5173`
 
-Tarayıcınız otomatik açılacaktır. PDF veya resim yükleyerek test etmeye başlayabilirsiniz.
+Tarayıcınız otomatik açılacaktır. PDF sınav kağıdı, Cevap Anahtarı ve Rubrik yükleyerek test etmeye başlayabilirsiniz.
 
 ---
 
-## ⚠️ Sık Karşılaşılan Sorunlar
+## ⚠️ Sık Karşılaşılan Sorunlar ve Çözümleri
 
-**"Read timed out" Hatası:**
-- Bilgisayarınız yavaşsa Ollama'nın cevap vermesi uzun sürebilir. Sistem **5 dakika** bekleyecek şekilde ayarlanmıştır. Sabırlı olun.
+**"Resource Exhausted" (429) Hatası:**
+- Google Gemini ücretsiz kotanızın dolduğunu gösterir (Dakikada ~15 istek).
+- **Çözüm:** Sistem otomatik olarak bekleyip (5-10 sn) tekrar deneyecektir. Müdahale etmenize gerek yoktur.
 
-**"Tek soru çıktı" Hatası:**
-- Kağıttaki yazı çok karışıksa veya sorular birbirine girmişse OCR tek blok olarak alabilir.
+**"Internal Server Error" (500) Hatası:**
+- Google sunucularında geçici bir sorun olduğunu belirtir.
+- **Çözüm:** Sistem bu hatayı algılar ve **20 saniye** bekleyip işlemi otomatik olarak tekrar eder.
 
-**"Quota exceeded" (429) Hatası:**
-- Google Gemini ücretsiz kotası dolmuş olabilir. Sistem otomatik olarak 5-10 saniye bekleyip tekrar dener. Hatayı sık alırsanız API anahtarını değiştirin.
+**"Puanlama 100 üzerinden görünüyor" Sorunu:**
+- Sistem artık rubrikte belirtilen puan neyse (örneğin 15 puan) onun üzerinden değerlendirme yapmaya zorlanmıştır. PDF raporunda "12 / 15" formatında göreceksiniz.
