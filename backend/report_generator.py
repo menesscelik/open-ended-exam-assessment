@@ -121,17 +121,22 @@ def generate_exam_report_pdf(student_data, results, output_path):
     
     # 2. Overall Score Calculation
     total_score = 0
-    max_score = 100 # Assuming 100 or sum of max scores if available
-    count = len(results)
+    total_max_score = 0
     
     for r in results:
         # Handle dict or object
         puan = r.get('final_puan') if isinstance(r, dict) else getattr(r, 'final_puan', 0)
-        total_score += int(puan) if puan else 0
+        mx = r.get('max_puan') if isinstance(r, dict) else getattr(r, 'max_puan', 100)
         
-    avg_score = total_score / count if count > 0 else 0
-    
-    summary_text = f"<b>Toplam Puan:</b> {total_score} (Ortalama: {avg_score:.1f})"
+        total_score += float(puan) if puan else 0
+        total_max_score += float(mx) if mx else 0
+        
+    # Formatting the summary
+    summary_text = f"<b>Toplam Başarı:</b> {total_score:.1f} / {total_max_score:.1f}"
+    if total_max_score > 0:
+        percentage = (total_score / total_max_score) * 100
+        summary_text += f" (%{percentage:.1f})"
+        
     story.append(Paragraph(summary_text, ParagraphStyle('Summary', parent=normal_style, fontSize=14, spaceAfter=20)))
 
     # 3. Detailed Results
@@ -145,6 +150,7 @@ def generate_exam_report_pdf(student_data, results, output_path):
             soru_metni = res.get('soru_metni', '')
             ogrenci_cevabi = res.get('ogrenci_cevabi', '')
             puan = res.get('final_puan', 0)
+            max_puan = res.get('max_puan', 100)
             yorum = res.get('yorum', '')
         else:
             soru_no = getattr(res, 'soru_no', idx + 1)

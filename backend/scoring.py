@@ -50,44 +50,57 @@ def analyze_with_gemini(ideal_cevap: str, ogrenci_cevabi: str, soru_metni: str =
         - Terminoloji ve İfade
         '''}"""
 
-            prompt = f"""ROL: Akademik sınav değerlendiricisisin.
+            prompt_warning = ""
+            if bert_score < 25.0:
+                prompt_warning = f"""
+    DİKKAT: Bu cevabın anlamsal benzerlik skoru çok düşüktür (%{bert_score:.1f}). 
+    Bu, öğrencinin cevabının konuyla tamamen alakasız, boş veya saçma olduğu anlamına gelebilir.
+    Lütfen cevabı ÇOK SIKI kontrol et. Eğer cevap anahtarı ve rubrikteki kavramlarla net bir eşleşme yoksa, 
+    "öğrenci çabalamış" diyerek puan VERME. Doğrudan 0 ver veya çok düşük puanla cezalandır.
+    Halüsinasyon görme; metinde olmayan bilgiyi varmış gibi kabul etme.
+    """
 
-        GİRDİLER:
-        SORU: {soru_metni if soru_metni else 'Belirtilmedi'}
-        ÖĞRENCİ CEVABI: {ogrenci_cevabi}
-        
-        KAYNAKLAR:
-        {source_key}
-        {source_rubric}
+            prompt = f"""
+    Sen deneyimli, ADİL ve DENGELİ bir öğretmensin. Öğrencinin açık uçlu sorusuna verdiği cevabı değerlendireceksin.
+    Ne çok sert (acımasız) ol, ne de çok gevşek (bol keseden). Tam hakkını ver.
+    
+    ## GİRDİLER
+    1. Soru Metni: "{soru_metni}" (Değerlendirilen soru budur. Rubrikte bu soruyu bul.)
+    2. İdeal Cevap Anahtarı: "{ideal_cevap}" (Buradaki anahtar kelimelerin öğrenci cevabında geçmesi kritik önemdedir.)
+    3. Öğrenci Cevabı: "{ogrenci_cevabi}"
+    4. Rubrik (Puanlama Kriterleri): "{rubric_text if rubric_text else 'Genel değerlendirme yap.'}"
+    5. SBERT Semantik Benzerlik Skoru: {bert_score:.2f} (Bu skor 0-100 arasındadır. Düşükse dikkatli ol!)
 
-        EK BİLGİ:
-        - SBERT Benzerlik Skoru: %{bert_score:.1f} (Referans amaçlı)
+    {prompt_warning}
 
-        GÖREV:
-        1. Öğrenci cevabını SADECE verilen rubrik ve cevap anahtarındaki puanlama ölçeğine göre puanla.
-        2. ASLA 100 üzerinden puanlama yapma (eğer sorunun kendi puanı 100 değilse).
-        3. Sorunun puan değeri (Örn: "10 Puan", "15 Puan") metinlerde varsa, "soru_max_puan" olarak onu kullan.
-        4. Eğer sorunun puanı yazmıyorsa, rubrikteki kriterlerin puanlarını topla ve bu toplamı "soru_max_puan" olarak kabul et.
-        5. Rubrikteki her kriteri değerlendir.
+    ## GÖREVLERİN
+    ## GÖREVLERİN
+    1. Öncelikle "İdeal Cevap Anahtarı"ndaki hangi anahtar kelimelerin/kavramların öğrenci cevabında geçtiğini, hangilerinin eksik olduğunu tespit et.
+    2. Rubrik metnini incele ve **"{soru_metni}"** ile ilişkili olan PUAN DEĞERİNİ (Örn: "2. Soru: 30 Puan", "(15 P)", "Max: 20") tespit et.
+       - Eğer rubrikte bu soru için özel bir puan tanımlanmışsa "soru_max_puan" olarak onu ayarla.
+       - Eğer genel rubrik varsa ve soruya özel puan yoksa, puanları topla.
+       - Sadece hiçbir bilgi yoksa 100 kabul et.
+    3. **ASLA** puanı, belirlenen maksimum puanın üzerine çıkarma.
+    4. Yorum yazarken **MUTLAKA** rubrikteki maddelere atıfta bulun. (Örn: "Rubrikteki 'X kavramı' maddesine göre...", "Cevap anahtarındaki '...' ifadesi eksik olduğu için...")
+    5. Eğer cevap yanlışsa, yapay bir nezaketle puan verme. Kesinlikle puan kır.
 
-        ÇIKTI FORMATI (JSON):
-        {{
-          "kriterler": [
+    ## ÇIKTI FORMATI (JSON Olmalı)
+    {{
+        "toplam_puan": (float) "Verilen Puan",
+        "soru_max_puan": (float) "Bu soru için tespit edilen Max Puan (Yoksa 0)",
+        "genel_yorum": "Rubrik maddelerine dayandırılmış, gerekçeli geri bildirim.",
+        "eksikler": ["Eksik anahtar kelime 1", "Eksik kavram 2"],
+        "kriterler": [
             {{
-                "kriter_adi": "Kriter Adı",
-                "puan": <verilen_puan>,
-                "max_puan": <kriter_max_puan>,
-                "durum": "TAM/KISMEN/YOK",
-                "gerekce": "Kısa açıklama"
+                "kriter_tanimi": "Kriter 1 Açıklaması",
+                "alinan_puan": (float),
+                "max_puan": (float)
             }}
-          ],
-          "toplam_puan": <toplam_puan>,
-          "soru_max_puan": <max_puan_rubrik_toplami>,
-          "genel_yorum": "Öğrenci cevabına yönelik akademik geri bildirim."
-        }}
-        """
+        ]
+    }}
+    """
             
-            # Using gemini-flash-latest to match OCR model
+            # Reverting to gemini-flash-latest as requested
             response = client.models.generate_content(
                 model='gemini-flash-latest',
                 contents=prompt,
@@ -201,8 +214,20 @@ def evaluate_answer(
     yorum = gemini_result['yorum']
     
     # Step 3: Calculate final
+    # Ensure max_puan is valid
+    if max_puan <= 0:
+        max_puan = 100.0
+        
     final_puan = calculate_final_score(bert_percentage, llm_skoru, max_puan)
     
+    # SAFETY CHECK: If SBERT is very low (< 20%) but LLM gives a high score (> 40% of max), flag it.
+    if bert_percentage < 20.0 and llm_skoru > (max_puan * 0.4):
+        logger.warning(f"Suspicious Score Detected! SBERT: {bert_percentage}%, LLM: {llm_skoru}/{max_puan}. Forcing reduction.")
+        # Force reduce the score essentially to 0 or very low, as it's likely a hallucination
+        final_puan = 0.0
+        llm_skoru = 0.0
+        yorum += "\n\n⚠️ (DÜZELTME: Cevabınızın anlamsal benzerlik skoru çok düşük olduğu için, yapay zeka puanlaması geçersiz sayılmış ve puanınız düşürülmüştür. Lütfen cevabınızın konuyla ilgili olduğundan emin olun.)"
+
     if anahtar_kelimeler:
         keyword_score = calculate_keyword_score(anahtar_kelimeler, ogrenci_cevabi)
         if keyword_score < 0.5:

@@ -43,48 +43,70 @@ def extract_text_from_image(image: Image.Image, prompt: str = None) -> str:
     Returns:
         Structured list of questions/answers or raw text string
     """
-    try:
-        client = get_gemini_client()
-        
-        if prompt is None:
-            # Updated prompt for structured extraction
-            prompt = (
-                "Bu görseldeki sınav kağıdını incele ve tüm soruları ayrı ayrı tespit et. "
-                "Her bir soru için şu bilgileri JSON formatında çıkar:\n"
-                "1. 'soru_no': Soru numarası (yoksa 1'den başlayarak ver)\n"
-                "2. 'soru_metni': Sorunun metni (sadece soru kısmı, cevap değil)\n"
-                "3. 'ogrenci_cevabi': Öğrencinin el yazısıyla verdiği cevap metni\n\n"
-                "Kurallar:\n"
-                "- Sadece JSON listesi döndür: [{'soru_no': 1, 'soru_metni': '...', 'ogrenci_cevabi': '...'}, ...]\n"
-                "- Markdown (```json ... ```) kullanma, sadece saf JSON ver.\n"
-                "- Türkçe karakterlere dikkat et.\n"
-                "- Cevap yoksa boş string ver."
-            )
-            
-        response = client.models.generate_content(
-            model='gemini-flash-latest',
-            contents=[prompt, image]
-        )
-        text = response.text
-        
-        # Try to parse JSON output
-        cleaned_text = text.strip()
-        if cleaned_text.startswith('```json'):
-            cleaned_text = cleaned_text[7:-3].strip()
-        elif cleaned_text.startswith('```'):
-            cleaned_text = cleaned_text[3:-3].strip()
-            
+    import time
+    import random
+
+    max_retries = 3
+    base_delay = 5
+
+    for attempt in range(max_retries + 1):
         try:
-            structured_data = json.loads(cleaned_text)
-            logger.info("Gemini returned valid structured JSON")
-            return structured_data
-        except json.JSONDecodeError:
-            logger.warning("Gemini did not return valid JSON, falling back to raw text")
-            return text.strip()
-        
-    except Exception as e:
-        logger.error(f"Gemini OCR failed: {e}")
-        raise Exception(f"Google Gemini ile metin okunamadı: {str(e)}")
+            client = get_gemini_client()
+            
+            if prompt is None:
+                # Updated prompt for structured extraction
+                prompt = (
+                    "Bu görseldeki sınav kağıdını incele ve tüm soruları ayrı ayrı tespit et. "
+                    "Her bir soru için şu bilgileri JSON formatında çıkar:\n"
+                    "1. 'soru_no': Soru numarası (yoksa 1'den başlayarak ver)\n"
+                    "2. 'soru_metni': Sorunun metni (sadece soru kısmı, cevap değil)\n"
+                    "3. 'ogrenci_cevabi': Öğrencinin el yazısıyla verdiği cevap metni\n\n"
+                    "Kurallar:\n"
+                    "- Sadece JSON listesi döndür: [{'soru_no': 1, 'soru_metni': '...', 'ogrenci_cevabi': '...'}, ...]\n"
+                    "- Markdown (```json ... ```) kullanma, sadece saf JSON ver.\n"
+                    "- Türkçe karakterlere dikkat et.\n"
+                    "- Cevap yoksa boş string ver."
+                )
+                
+            response = client.models.generate_content(
+                model='gemini-flash-latest',
+                contents=[prompt, image]
+            )
+            text = response.text
+            
+            # Try to parse JSON output
+            cleaned_text = text.strip()
+            if cleaned_text.startswith('```json'):
+                cleaned_text = cleaned_text[7:-3].strip()
+            elif cleaned_text.startswith('```'):
+                cleaned_text = cleaned_text[3:-3].strip()
+                
+            try:
+                structured_data = json.loads(cleaned_text)
+                logger.info("Gemini returned valid structured JSON")
+                return structured_data
+            except json.JSONDecodeError:
+                logger.warning("Gemini did not return valid JSON, falling back to raw text")
+                return text.strip()
+            
+        except Exception as e:
+            error_msg = str(e)
+            if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+                if attempt < max_retries:
+                    wait_time = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                    logger.warning(f"Rate limit hit during OCR. Retrying in {wait_time:.2f}s... (Attempt {attempt+1}/{max_retries})")
+                    time.sleep(wait_time)
+                    continue
+            elif "500" in error_msg or "INTERNAL" in error_msg:
+                if attempt < max_retries:
+                    wait_time = 20
+                    logger.warning(f"Internal Server Error (500) during OCR. Retrying in {wait_time}s... (Attempt {attempt+1}/{max_retries})")
+                    time.sleep(wait_time)
+                    continue
+            
+            # If it's not a retryable error or max retries reached
+            logger.error(f"Gemini OCR failed: {e}")
+            raise Exception(f"Google Gemini ile metin okunamadı (Hata: {str(e)})")
 
 def normalize_text(text: str) -> str:
     """
