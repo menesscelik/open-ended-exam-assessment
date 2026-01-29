@@ -78,6 +78,8 @@ class ReportItem(BaseModel):
     soru_metni: Optional[str] = ""
     ogrenci_cevabi: Optional[str] = ""
     final_puan: Optional[float] = 0.0
+    # Rubrikteki soru agirligi / bu sorunun sinavdaki maksimum puani (Orn: 30, 70)
+    max_puan: Optional[float] = 100.0
     yorum: Optional[str] = ""
 
 class ReportRequest(BaseModel):

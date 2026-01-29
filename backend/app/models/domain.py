@@ -5,7 +5,7 @@ SQLAlchemy ORM models for exam system
 
 from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey
 from sqlalchemy.sql import func
-from database import Base
+from app.core.database import Base
 
 
 class SinavSorulari(Base):

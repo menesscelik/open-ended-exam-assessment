@@ -31,5 +31,5 @@ def get_db():
 
 def init_db():
     """Initialize database tables."""
-    from models import SinavSorulari, OgrenciSonuclari
+    from app.models.domain import SinavSorulari, OgrenciSonuclari
     Base.metadata.create_all(bind=engine)

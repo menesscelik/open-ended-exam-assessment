@@ -206,6 +206,7 @@ function App() {
 
         // Use JSON body for clearer data transfer and to support large texts
         const payload = {
+          soru_no: item.soru_no,
           ideal_cevap: "", // Not used directly, we rely on answer_key_text
           ogrenci_cevabi: item.ogrenci_cevabi,
           soru_metni: item.soru_metni || "",
