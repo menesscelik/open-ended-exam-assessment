@@ -621,16 +621,7 @@ function App() {
                       <p className="text-red-600 dark:text-red-400">{res.error}</p>
                     ) : (
                       <>
-                        <div className="grid grid-cols-2 gap-4 mb-4">
-                          <div className="bg-white dark:bg-slate-800 p-3 rounded-lg shadow-sm">
-                            <div className="text-sm text-slate-500 dark:text-slate-400">Semantik Kontrol (SBERT)</div>
-                            <div className="text-xl font-bold text-indigo-600 dark:text-indigo-400">{(res.bert_skoru || 0 * 100).toFixed(1)}%</div>
-                          </div>
-                          <div className="bg-white dark:bg-slate-800 p-3 rounded-lg shadow-sm">
-                            <div className="text-sm text-slate-500 dark:text-slate-400">Rubrik / Mantık Puanı</div>
-                            <div className="text-xl font-bold text-purple-600 dark:text-purple-400">{res.llm_skoru}/{res.max_puan || 100}</div>
-                          </div>
-                        </div>
+
                         <div className="bg-white dark:bg-slate-800 p-4 rounded-lg shadow-sm">
                           <div className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Yapay Zeka Değerlendirmesi</div>
                           <p className="text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{res.yorum}</p>

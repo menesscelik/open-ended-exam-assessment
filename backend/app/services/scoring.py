@@ -85,9 +85,15 @@ def analyze_with_openai(ideal_cevap: str, ogrenci_cevabi: str, soru_metni: str =
        - Ancak, kavramsal olarak yanlışsa (farklı bir şey anlatıyorsa) puan verme.
        - Varsa rubrikteki alt kırılımlara (Grammar, Clarity, vb.) bak.
 
-    4. **ÇIKTI:**
+    4. **DETAYLI GERİ BİLDİRİM VE ÇIKTI:**
        - JSON formatında çıktı ver.
-       - Yorumların, neden puan kırdığını veya neden tam puan verdiğini RUBRİK maddelerine atıfta bulunarak açıklamalıdır.
+       - **Yorumların ÇOK DETAYLI ve EĞİTİCİ olmalıdır.** "Eksik yazmışsın" deyip geçme.
+       - Şunları açıkla:
+         1. Öğrenci neyi doğru yapmış? (Hangi anahtar kavramı yakalamış?)
+         2. Neden puan kırdın? (Rubrikteki hangi maddeye uymamış? Hangi terimi yanlış kullanmış?)
+         3. Doğrusu ne olmalıydı? (Cevap anahtarına göre ideal açıklama neydi?)
+       - Yorumun, öğrencinin cevabını okuyup "Ha, hatam şuradaymış" diyebileceği netlikte olmalı.
+       - **Üslup:** Objektif, yapıcı ve açıklayıcı bir öğretmen dili kullan.
 
     ## ÇIKTI FORMATI (JSON)
     {{
